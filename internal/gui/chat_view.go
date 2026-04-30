@@ -15,6 +15,7 @@ const (
 	bubbleMaxWidthPercent = 0.7
 	bubbleMinPadding      = 10
 	bubbleCornerRadius    = 12
+	thinkingPlaceholder   = "正在思考..."
 )
 
 var (
@@ -124,7 +125,7 @@ func (cv *ChatView) AddAIMessageStart() {
 	cv.bubbleMu.Lock()
 	defer cv.bubbleMu.Unlock()
 
-	cv.currentBubble = newBubbleBox("", aiBgColor, aiTextColor, cv.maxWidth)
+	cv.currentBubble = newBubbleBox(thinkingPlaceholder, aiBgColor, aiTextColor, cv.maxWidth)
 	bubbleCanvas := cv.currentBubble.Container()
 
 	roleLabel := canvas.NewText("AI", primaryColor)
@@ -142,7 +143,12 @@ func (cv *ChatView) AddAIMessageChunk(text string) {
 	defer cv.bubbleMu.Unlock()
 
 	if cv.currentBubble != nil {
-		cv.currentBubble.SetText(cv.currentBubble.label.Text + text)
+		current := cv.currentBubble.label.Text
+		if current == thinkingPlaceholder {
+			cv.currentBubble.SetText(text)
+		} else {
+			cv.currentBubble.SetText(current + text)
+		}
 		cv.scroll.ScrollToBottom()
 	}
 }

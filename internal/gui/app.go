@@ -101,9 +101,9 @@ func (a *App) initChatService() {
 		return
 	}
 	svc, err := chat.NewService(a.cfg.APIKey, chat.WithGUIOutput(chat.GUIStreamCallbacks{
-		OnStart:  func() { a.chatView.AddAIMessageStart() },
-		OnChunk:  func(text string) { a.chatView.AddAIMessageChunk(text) },
-		OnFinish: func() { a.chatView.AddAIMessageEnd() },
+		OnStart:  func() { fyne.Do(func() { a.chatView.AddAIMessageStart() }) },
+		OnChunk:  func(text string) { fyne.Do(func() { a.chatView.AddAIMessageChunk(text) }) },
+		OnFinish: func() { fyne.Do(func() { a.chatView.AddAIMessageEnd() }) },
 	}))
 	if err != nil {
 		a.chatView.ShowError("初始化 AI 服务失败: " + err.Error())
@@ -120,7 +120,7 @@ func (a *App) onSendMessage(text string) {
 	a.chatView.AddUserMessage(text)
 	go func() {
 		if err := a.chatSvc.Chat(text); err != nil {
-			a.chatView.ShowError("发送消息失败: " + err.Error())
+			fyne.Do(func() { a.chatView.ShowError("发送消息失败: " + err.Error()) })
 		}
 	}()
 }
