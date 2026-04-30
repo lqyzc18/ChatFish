@@ -1,20 +1,21 @@
 # ChatFish
 
-基于 Go + [cloudwego/eino](https://github.com/cloudwego/eino) 框架的智能 AI 对话 CLI 工具，支持流式输出（token-by-token）和多轮上下文对话。
+基于 Go + [cloudwego/eino](https://github.com/cloudwego/eino) 框架的智能 AI 对话桌面应用，使用 [fyne](https://github.com/fyne-io/fyne) 构建现代化 GUI 界面，支持流式输出和多轮上下文对话。
 
 ## 功能特性
 
-- **流式输出** — 实时逐 token 打印 AI 响应，无需等待完整生成
-- **多轮对话** — REPL 模式下维护完整对话历史，支持上下文理解
-- **优雅退出** — 支持 `/quit` / `/exit` 命令和 Ctrl+C 信号拦截，安全关闭连接
-- **配置灵活** — 支持命令行参数、环境变量、配置文件三种密钥配置方式
-- **依赖注入** — 基于接口编程，低耦合，易于扩展
+- **流式输出** — 实时逐 token 显示 AI 响应，无需等待完整生成
+- **多轮对话** — 维护完整对话历史，支持上下文理解
+- **现代化 GUI** — 使用 fyne 框架构建的跨平台桌面应用
+- **消息气泡** — 用户消息和 AI 响应以气泡样式展示
+- **配置灵活** — 支持 GUI 界面配置 API Key
+- **简洁设计** — 浅色主题，清爽的界面风格
 
 ## 技术栈
 
 | 层次 | 技术选型 |
 |------|---------|
-| CLI 框架 | [spf13/cobra](https://github.com/spf13/cobra) |
+| GUI 框架 | [fyne](https://github.com/fyne-io/fyne) |
 | AI 框架 | [cloudwego/eino](https://github.com/cloudwego/eino) |
 | 模型接入 | [cloudwego/eino-ext](https://github.com/cloudwego/eino-ext)（OpenAI 兼容接口） |
 | 模型 | MiniMax M2.7 |
@@ -24,17 +25,20 @@
 
 ```
 ChatFish/
-├── main.go                    # 程序入口
+├── main.go                    # GUI 应用入口
 ├── config/
 │   └── config.yaml            # API 密钥配置文件（不提交到 Git）
 ├── internal/
 │   ├── chat/
 │   │   └── service.go         # AI 对话服务（流式 + 多轮历史）
-│   └── config/
-│       └── config.go          # YAML 配置加载（支持 exe 同级目录）
-├── cmd/
-│   ├── root.go                # Cobra 根命令（--version）
-│   └── chat.go                # chat 子命令（密钥优先级链）
+│   ├── config/
+│   │   └── config.go          # YAML 配置加载和保存
+│   └── gui/
+│       ├── app.go             # 主应用窗口
+│       ├── chat_view.go       # 聊天界面组件
+│       ├── settings_view.go   # 设置界面组件
+│       ├── theme.go           # 主题管理
+│       └── custom_theme.go    # 自定义浅色主题
 └── go.mod
 ```
 
@@ -48,46 +52,34 @@ ChatFish/
 api_key: "your-minimax-api-key"
 ```
 
+或者在应用 GUI 中通过设置界面配置。
+
 ### 2. 编译运行
 
 ```bash
 go build -o chatfish.exe .
-./chatfish.exe chat "你好，用一句话介绍自己"
+./chatfish.exe
 ```
 
-### 3. 交互式对话
+## 使用说明
 
-```bash
-./chatfish.exe chat -i
-# 或直接
-./chatfish.exe chat
-```
+### 主界面
 
-退出命令：`/quit` `/exit` 或 `Ctrl+C`。
+- **发送消息**: 在输入框中输入消息，按回车或点击发送按钮
+- **清除对话**: 点击工具栏的清除按钮（垃圾桶图标）
+- **设置**: 点击工具栏的设置按钮（齿轮图标）配置 API Key
+- **帮助**: 点击工具栏的帮助按钮（问号图标）查看帮助
 
-## 密钥配置优先级
+### 消息样式
 
-```
-命令行 -k > 环境变量 MINIMAX_API_KEY > config/config.yaml
-```
+- 用户消息显示为蓝色气泡，靠右对齐
+- AI 响应显示为灰色气泡，靠左对齐
+- 流式输出时实时更新 AI 响应内容
 
-优先级从高到低，优先使用高优先级的配置源。
+### 快捷键
 
-## 常用命令
-
-```bash
-# 查看版本
-chatfish.exe --version
-
-# 单次提问
-chatfish.exe chat "你好"
-
-# 交互式对话
-chatfish.exe chat -i
-
-# 手动指定密钥
-chatfish.exe chat -k "your-api-key" "你好"
-```
+- **Enter**: 换行
+- **Ctrl+Enter**: 发送消息
 
 ## 开发说明
 
@@ -98,11 +90,13 @@ go mod tidy
 # 编译
 go build -o chatfish.exe .
 
-# 直接运行（需确保 config/config.yaml 存在）
+# 直接运行
 go run .
 ```
 
 ## 注意事项
 
 - `config/config.yaml` 包含敏感信息，已加入 `.gitignore`，不要提交到版本库
-- 流式输出依赖终端 UTF-8 编码，Windows PowerShell 默认可能显示乱码，建议使用 Windows Terminal 或 VS Code 终端
+- 首次编译 fyne 应用可能需要较长时间（约 10 分钟），后续编译会很快
+- 应用支持跨平台运行（Windows、macOS、Linux）
+- 当前仅支持浅色主题
