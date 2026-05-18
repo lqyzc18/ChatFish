@@ -67,6 +67,8 @@ type ChatView struct {
 	currentBubble *bubbleBox
 	bubbleMu      sync.Mutex
 	maxWidth      float32
+	isLoading     bool
+	loadingLabel  *widget.Label
 }
 
 func NewChatView(onSend func(string), maxBubbleWidth float32) *ChatView {
@@ -88,19 +90,22 @@ func (cv *ChatView) init() {
 
 	cv.sendBtn = widget.NewButton("发送", func() {
 		text := cv.input.Text
-		if text != "" {
+		if text != "" && !cv.isLoading {
 			cv.onSend(text)
 			cv.input.SetText("")
 		}
 	})
 	cv.sendBtn.Importance = widget.HighImportance
 
+	cv.loadingLabel = widget.NewLabel("")
+	cv.loadingLabel.Hide()
+
 	inputContainer := container.NewBorder(nil, nil, nil, cv.sendBtn, cv.input)
 
 	separator := canvas.NewRectangle(separatorColor)
 	separator.SetMinSize(fyne.NewSize(0, 1))
 
-	cv.container = container.NewBorder(nil, container.NewVBox(separator, inputContainer), nil, nil, cv.scroll)
+	cv.container = container.NewBorder(nil, container.NewVBox(cv.loadingLabel, separator, inputContainer), nil, nil, cv.scroll)
 }
 
 func (cv *ChatView) Widget() fyne.CanvasObject {
@@ -157,6 +162,21 @@ func (cv *ChatView) AddAIMessageEnd() {
 	cv.bubbleMu.Lock()
 	defer cv.bubbleMu.Unlock()
 	cv.currentBubble = nil
+	cv.isLoading = false
+	cv.loadingLabel.Hide()
+	cv.sendBtn.Enable()
+}
+
+func (cv *ChatView) SetLoading(loading bool) {
+	cv.isLoading = loading
+	if loading {
+		cv.loadingLabel.SetText("正在思考...")
+		cv.loadingLabel.Show()
+		cv.sendBtn.Disable()
+	} else {
+		cv.loadingLabel.Hide()
+		cv.sendBtn.Enable()
+	}
 }
 
 func (cv *ChatView) AddAIMessage(text string) {

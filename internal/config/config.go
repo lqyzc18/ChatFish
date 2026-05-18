@@ -9,7 +9,9 @@ import (
 )
 
 type Config struct {
-	APIKey string `yaml:"api_key"`
+	APIKey  string `yaml:"api_key"`
+	BaseURL string `yaml:"base_url,omitempty"`
+	Model   string `yaml:"model,omitempty"`
 }
 
 func Load() (*Config, error) {

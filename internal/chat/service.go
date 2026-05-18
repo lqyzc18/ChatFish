@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/cloudwego/eino-ext/components/model/openai"
@@ -14,8 +15,8 @@ import (
 )
 
 const (
-	miniMaxBaseURL     = "https://api.minimaxi.com/v1"
-	miniMaxModel       = "MiniMax-M2.7"
+	defaultBaseURL     = "https://api.minimaxi.com/v1"
+	defaultModel       = "MiniMax-M2.7"
 	maxHistoryMessages = 20
 	streamTimeout      = 60 * time.Second
 )
@@ -30,6 +31,7 @@ type Service struct {
 	chatModel model.BaseChatModel
 	guiOutput GUIStreamCallbacks
 	history   []*schema.Message
+	mu        sync.RWMutex
 }
 
 type Option func(*Service)
@@ -38,12 +40,19 @@ func WithGUIOutput(callbacks GUIStreamCallbacks) Option {
 	return func(s *Service) { s.guiOutput = callbacks }
 }
 
-func NewService(apiKey string, opts ...Option) (*Service, error) {
+func NewService(apiKey, baseURL, model string, opts ...Option) (*Service, error) {
+	if baseURL == "" {
+		baseURL = defaultBaseURL
+	}
+	if model == "" {
+		model = defaultModel
+	}
+
 	ctx := context.Background()
 	cm, err := openai.NewChatModel(ctx, &openai.ChatModelConfig{
 		APIKey:  apiKey,
-		Model:   miniMaxModel,
-		BaseURL: miniMaxBaseURL,
+		Model:   model,
+		BaseURL: baseURL,
 		Timeout: streamTimeout,
 	})
 	if err != nil {
@@ -107,10 +116,14 @@ func (s *Service) streamResponse(ctx context.Context, msgs []*schema.Message) (s
 }
 
 func (s *Service) Chat(question string) error {
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), streamTimeout)
+	defer cancel()
 
+	s.mu.RLock()
 	msgs := make([]*schema.Message, len(s.history), len(s.history)+1)
 	copy(msgs, s.history)
+	s.mu.RUnlock()
+
 	msgs = append(msgs, &schema.Message{
 		Role:    schema.User,
 		Content: question,
@@ -121,6 +134,7 @@ func (s *Service) Chat(question string) error {
 		return err
 	}
 
+	s.mu.Lock()
 	s.history = append(s.history,
 		&schema.Message{Role: schema.User, Content: question},
 		&schema.Message{Role: schema.Assistant, Content: response},
@@ -129,14 +143,21 @@ func (s *Service) Chat(question string) error {
 	if len(s.history) > maxHistoryMessages {
 		s.history = s.history[len(s.history)-maxHistoryMessages:]
 	}
+	s.mu.Unlock()
 
 	return nil
 }
 
 func (s *Service) ClearHistory() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.history = make([]*schema.Message, 0)
 }
 
 func (s *Service) GetHistory() []*schema.Message {
-	return s.history
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	history := make([]*schema.Message, len(s.history))
+	copy(history, s.history)
+	return history
 }

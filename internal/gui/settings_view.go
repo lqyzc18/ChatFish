@@ -11,16 +11,18 @@ import (
 )
 
 type SettingsView struct {
-	container   *fyne.Container
-	apiKeyEntry *widget.Entry
-	saveBtn     *widget.Button
-	cancelBtn   *widget.Button
-	cfg         *config.Config
-	onSave      func(*config.Config)
-	onCancel    func()
+	container    *fyne.Container
+	apiKeyEntry  *widget.Entry
+	baseURLEntry *widget.Entry
+	modelEntry   *widget.Entry
+	saveBtn      *widget.Button
+	cancelBtn    *widget.Button
+	cfg          *config.Config
+	onSave       func(*config.Config)
+	onCancel     func()
 }
 
-func NewSettingsView(cfg *config.Config, onSave func(*config.Config), onCancel func(), _ func(string)) *SettingsView {
+func NewSettingsView(cfg *config.Config, onSave func(*config.Config), onCancel func()) *SettingsView {
 	sv := &SettingsView{
 		cfg:      cfg,
 		onSave:   onSave,
@@ -32,9 +34,21 @@ func NewSettingsView(cfg *config.Config, onSave func(*config.Config), onCancel f
 
 func (sv *SettingsView) init() {
 	sv.apiKeyEntry = widget.NewPasswordEntry()
-	sv.apiKeyEntry.SetPlaceHolder("输入您的 MiniMax API Key")
+	sv.apiKeyEntry.SetPlaceHolder("输入您的 API Key")
 	if sv.cfg != nil {
 		sv.apiKeyEntry.SetText(sv.cfg.APIKey)
+	}
+
+	sv.baseURLEntry = widget.NewEntry()
+	sv.baseURLEntry.SetPlaceHolder("https://api.minimaxi.com/v1 (默认)")
+	if sv.cfg != nil && sv.cfg.BaseURL != "" {
+		sv.baseURLEntry.SetText(sv.cfg.BaseURL)
+	}
+
+	sv.modelEntry = widget.NewEntry()
+	sv.modelEntry.SetPlaceHolder("MiniMax-M2.7 (默认)")
+	if sv.cfg != nil && sv.cfg.Model != "" {
+		sv.modelEntry.SetText(sv.cfg.Model)
 	}
 
 	sv.saveBtn = widget.NewButton("保存", sv.onSaveClick)
@@ -46,14 +60,16 @@ func (sv *SettingsView) init() {
 		}
 	})
 
-	title := canvas.NewText("API Key 设置", primaryColor)
+	title := canvas.NewText("API 设置", primaryColor)
 	title.TextSize = 18
 	title.TextStyle = fyne.TextStyle{Bold: true}
 
-	desc := widget.NewLabel("请输入您的 MiniMax API Key 以使用 AI 对话功能")
+	desc := widget.NewLabel("配置 AI 对话服务参数")
 
 	form := widget.NewForm(
 		widget.NewFormItem("API Key", sv.apiKeyEntry),
+		widget.NewFormItem("Base URL", sv.baseURLEntry),
+		widget.NewFormItem("Model", sv.modelEntry),
 	)
 
 	buttons := container.NewHBox(
@@ -84,6 +100,8 @@ func (sv *SettingsView) onSaveClick() {
 	}
 
 	sv.cfg.APIKey = sv.apiKeyEntry.Text
+	sv.cfg.BaseURL = sv.baseURLEntry.Text
+	sv.cfg.Model = sv.modelEntry.Text
 
 	if sv.onSave != nil {
 		sv.onSave(sv.cfg)

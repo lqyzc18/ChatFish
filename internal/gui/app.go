@@ -54,7 +54,7 @@ func (a *App) init() {
 
 	maxBubbleWidth := float32(windowWidth) * bubbleMaxWidthPercent
 	a.chatView = NewChatView(a.onSendMessage, maxBubbleWidth)
-	a.settings = NewSettingsView(a.cfg, a.onSettingsSave, a.closeSettingsWindow, nil)
+	a.settings = NewSettingsView(a.cfg, a.onSettingsSave, a.closeSettingsWindow)
 
 	toolbar := a.createToolbar()
 
@@ -100,7 +100,7 @@ func (a *App) initChatService() {
 	if a.cfg.APIKey == "" {
 		return
 	}
-	svc, err := chat.NewService(a.cfg.APIKey, chat.WithGUIOutput(chat.GUIStreamCallbacks{
+	svc, err := chat.NewService(a.cfg.APIKey, a.cfg.BaseURL, a.cfg.Model, chat.WithGUIOutput(chat.GUIStreamCallbacks{
 		OnStart:  func() { fyne.Do(func() { a.chatView.AddAIMessageStart() }) },
 		OnChunk:  func(text string) { fyne.Do(func() { a.chatView.AddAIMessageChunk(text) }) },
 		OnFinish: func() { fyne.Do(func() { a.chatView.AddAIMessageEnd() }) },
@@ -118,9 +118,13 @@ func (a *App) onSendMessage(text string) {
 		return
 	}
 	a.chatView.AddUserMessage(text)
+	a.chatView.SetLoading(true)
 	go func() {
 		if err := a.chatSvc.Chat(text); err != nil {
-			fyne.Do(func() { a.chatView.ShowError("发送消息失败: " + err.Error()) })
+			fyne.Do(func() {
+				a.chatView.ShowError("发送消息失败: " + err.Error())
+				a.chatView.SetLoading(false)
+			})
 		}
 	}()
 }
@@ -133,8 +137,6 @@ func (a *App) onSettingsSave(cfg *config.Config) {
 	}
 	a.initChatService()
 }
-
-func (a *App) onThemeChange(_ string) {}
 
 func (a *App) closeSettingsWindow() {
 	if a.settingsWindow != nil {

@@ -8,17 +8,17 @@ import (
 )
 
 var (
-	customPrimary    = color.NRGBA{R: 66, G: 133, B: 244, A: 255}
-	customBackground = color.NRGBA{R: 255, G: 255, B: 255, A: 255}
-	customButton     = color.NRGBA{R: 66, G: 133, B: 244, A: 255}
-	customDisabled   = color.NRGBA{R: 189, G: 189, B: 189, A: 255}
-	customText       = color.NRGBA{R: 32, G: 33, B: 36, A: 255}
+	customPrimary     = color.NRGBA{R: 66, G: 133, B: 244, A: 255}
+	customBackground  = color.NRGBA{R: 255, G: 255, B: 255, A: 255}
+	customButton      = color.NRGBA{R: 66, G: 133, B: 244, A: 255}
+	customDisabled    = color.NRGBA{R: 189, G: 189, B: 189, A: 255}
+	customText        = color.NRGBA{R: 32, G: 33, B: 36, A: 255}
 	customPlaceholder = color.NRGBA{R: 154, G: 160, B: 166, A: 255}
-	customInputBg    = color.NRGBA{R: 245, G: 245, B: 245, A: 255}
-	customHover      = color.NRGBA{R: 232, G: 240, B: 254, A: 255}
-	customFocus      = color.NRGBA{R: 210, G: 227, B: 252, A: 255}
-	customSeparator  = color.NRGBA{R: 218, G: 220, B: 224, A: 255}
-	customShadow     = color.NRGBA{R: 0, G: 0, B: 0, A: 30}
+	customInputBg     = color.NRGBA{R: 245, G: 245, B: 245, A: 255}
+	customHover       = color.NRGBA{R: 232, G: 240, B: 254, A: 255}
+	customFocus       = color.NRGBA{R: 210, G: 227, B: 252, A: 255}
+	customSeparator   = color.NRGBA{R: 218, G: 220, B: 224, A: 255}
+	customShadow      = color.NRGBA{R: 0, G: 0, B: 0, A: 30}
 )
 
 type customLightTheme struct{}
