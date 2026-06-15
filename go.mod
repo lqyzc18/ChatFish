@@ -6,6 +6,7 @@ require (
 	fyne.io/fyne/v2 v2.7.4
 	github.com/cloudwego/eino v0.9.6
 	github.com/cloudwego/eino-ext/components/model/openai v0.1.13
+	github.com/yuin/goldmark v1.8.2
 	gopkg.in/yaml.v3 v3.0.1
 )
 
@@ -63,7 +64,6 @@ require (
 	github.com/twitchyliquid64/golang-asm v0.15.1 // indirect
 	github.com/wk8/go-ordered-map/v2 v2.1.8 // indirect
 	github.com/yargevad/filepathx v1.0.0 // indirect
-	github.com/yuin/goldmark v1.8.2 // indirect
 	golang.org/x/arch v0.11.0 // indirect
 	golang.org/x/exp v0.0.0-20230713183714-613f0c0eb8a1 // indirect
 	golang.org/x/image v0.24.0 // indirect

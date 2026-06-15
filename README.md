@@ -1,6 +1,7 @@
 # ChatFish
 
-基于 Go + [cloudwego/eino](https://github.com/cloudwego/eino) 框架的智能 AI 对话桌面应用，使用 [fyne](https://github.com/fyne-io/fyne) 构建现代化 GUI 界面，支持流式输出和多轮上下文对话。
+基于 Go + [cloudwego/eino](https://github.com/cloudwego/eino) 框架的智能 AI
+对话桌面应用，使用 [fyne](https://github.com/fyne-io/fyne) 构建现代化 GUI 界面，支持流式输出和多轮上下文对话。
 
 ## 功能特性
 
@@ -14,13 +15,13 @@
 
 ## 技术栈
 
-| 层次 | 技术选型 |
-|------|---------|
-| GUI 框架 | [fyne](https://github.com/fyne-io/fyne) |
-| AI 框架 | [cloudwego/eino](https://github.com/cloudwego/eino) |
-| 模型接入 | [cloudwego/eino-ext](https://github.com/cloudwego/eino-ext)（OpenAI 兼容接口） |
-| 模型 | MiniMax M3 |
-| 配置解析 | gopkg.in/yaml.v3 |
+| 层次     | 技术选型                                                                     |
+|--------|--------------------------------------------------------------------------|
+| GUI 框架 | [fyne](https://github.com/fyne-io/fyne)                                  |
+| AI 框架  | [cloudwego/eino](https://github.com/cloudwego/eino)                      |
+| 模型接入   | [cloudwego/eino-ext](https://github.com/cloudwego/eino-ext)（OpenAI 兼容接口） |
+| 模型     | MiniMax M3                                                               |
+| 配置解析   | gopkg.in/yaml.v3                                                         |
 
 ## 项目结构
 
