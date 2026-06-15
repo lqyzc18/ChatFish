@@ -29,32 +29,55 @@ var (
 )
 
 type bubbleBox struct {
-	bg    *canvas.Rectangle
-	label *widget.Label
+	bg       *canvas.Rectangle
+	label    *widget.Label
+	richText *widget.RichText
+	isAI     bool
 }
 
-func newBubbleBox(text string, bgColor color.Color, textColor color.Color, maxWidth float32) *bubbleBox {
-	label := widget.NewLabel(text)
-	label.Wrapping = fyne.TextWrapWord
-
+func newBubbleBox(text string, bgColor color.Color, textColor color.Color, maxWidth float32, isAI bool) *bubbleBox {
 	bg := canvas.NewRectangle(bgColor)
 	bg.CornerRadius = bubbleCornerRadius
 	// 关键：强制设置一个最小宽度，防止 HBox 将其压缩为 1 字符宽
 	bg.SetMinSize(fyne.NewSize(maxWidth*0.8, 0))
 
-	return &bubbleBox{
-		bg:    bg,
-		label: label,
+	bb := &bubbleBox{
+		bg:   bg,
+		isAI: isAI,
 	}
+
+	if isAI {
+		// AI 消息使用 RichText 支持 Markdown
+		richText := widget.NewRichText()
+		richText.Wrapping = fyne.TextWrapWord
+		bb.richText = richText
+	} else {
+		// 用户消息使用普通 Label
+		label := widget.NewLabel(text)
+		label.Wrapping = fyne.TextWrapWord
+		bb.label = label
+	}
+
+	return bb
 }
 
 func (b *bubbleBox) Container() fyne.CanvasObject {
+	if b.isAI && b.richText != nil {
+		padded := container.NewPadded(b.richText)
+		return container.NewStack(b.bg, padded)
+	}
 	padded := container.NewPadded(b.label)
 	return container.NewStack(b.bg, padded)
 }
 
 func (b *bubbleBox) SetText(text string) {
-	b.label.SetText(text)
+	if b.isAI && b.richText != nil {
+		// AI 消息使用 Markdown 渲染
+		renderer := NewMarkdownRenderer()
+		b.richText.SetSegments(renderer.ToMarkup(text))
+	} else {
+		b.label.SetText(text)
+	}
 }
 
 type ChatView struct {
@@ -120,7 +143,7 @@ func (cv *ChatView) createBubbleRow(bubbleCanvas fyne.CanvasObject, alignLeft bo
 }
 
 func (cv *ChatView) AddUserMessage(text string) {
-	bubble := newBubbleBox(text, userBgColor, userTextColor, cv.maxWidth)
+	bubble := newBubbleBox(text, userBgColor, userTextColor, cv.maxWidth, false)
 	row := cv.createBubbleRow(bubble.Container(), false)
 	cv.messageList.Add(row)
 	cv.scroll.ScrollToBottom()
@@ -130,7 +153,7 @@ func (cv *ChatView) AddAIMessageStart() {
 	cv.bubbleMu.Lock()
 	defer cv.bubbleMu.Unlock()
 
-	cv.currentBubble = newBubbleBox(thinkingPlaceholder, aiBgColor, aiTextColor, cv.maxWidth)
+	cv.currentBubble = newBubbleBox(thinkingPlaceholder, aiBgColor, aiTextColor, cv.maxWidth, true)
 	bubbleCanvas := cv.currentBubble.Container()
 
 	roleLabel := canvas.NewText("AI", primaryColor)
@@ -180,7 +203,7 @@ func (cv *ChatView) SetLoading(loading bool) {
 }
 
 func (cv *ChatView) AddAIMessage(text string) {
-	bubble := newBubbleBox(text, aiBgColor, aiTextColor, cv.maxWidth)
+	bubble := newBubbleBox(text, aiBgColor, aiTextColor, cv.maxWidth, true)
 	roleLabel := canvas.NewText("AI", primaryColor)
 	roleLabel.TextStyle = fyne.TextStyle{Bold: true}
 	roleLabel.TextSize = 12
