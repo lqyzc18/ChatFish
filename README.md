@@ -6,9 +6,10 @@
 
 - **流式输出** — 实时逐 token 显示 AI 响应，无需等待完整生成
 - **多轮对话** — 维护完整对话历史，支持上下文理解
+- **Markdown 渲染** — AI 响应支持 Markdown 格式渲染，代码块、列表、链接等清晰展示
 - **现代化 GUI** — 使用 fyne 框架构建的跨平台桌面应用
 - **消息气泡** — 用户消息和 AI 响应以气泡样式展示
-- **配置灵活** — 支持 GUI 界面配置 API Key
+- **配置灵活** — 支持 GUI 界面配置 API Key、Base URL 和模型
 - **简洁设计** — 浅色主题，清爽的界面风格
 
 ## 技术栈
@@ -18,7 +19,7 @@
 | GUI 框架 | [fyne](https://github.com/fyne-io/fyne) |
 | AI 框架 | [cloudwego/eino](https://github.com/cloudwego/eino) |
 | 模型接入 | [cloudwego/eino-ext](https://github.com/cloudwego/eino-ext)（OpenAI 兼容接口） |
-| 模型 | MiniMax M2.7 |
+| 模型 | MiniMax M3 |
 | 配置解析 | gopkg.in/yaml.v3 |
 
 ## 项目结构
@@ -36,6 +37,7 @@ ChatFish/
 │   └── gui/
 │       ├── app.go             # 主应用窗口
 │       ├── chat_view.go       # 聊天界面组件
+│       ├── markdown.go        # Markdown 渲染器（goldmark → Fyne RichText）
 │       ├── settings_view.go   # 设置界面组件
 │       ├── theme.go           # 主题管理
 │       └── custom_theme.go    # 自定义浅色主题

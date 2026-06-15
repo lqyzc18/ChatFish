@@ -3,6 +3,7 @@ package gui
 import (
 	"image/color"
 	"sync"
+	"sync/atomic"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
@@ -29,10 +30,11 @@ var (
 )
 
 type bubbleBox struct {
-	bg       *canvas.Rectangle
-	label    *widget.Label
-	richText *widget.RichText
-	isAI     bool
+	bg              *canvas.Rectangle
+	label           *widget.Label
+	richText        *widget.RichText
+	isAI            bool
+	accumulatedText string
 }
 
 func newBubbleBox(text string, bgColor color.Color, textColor color.Color, maxWidth float32, isAI bool) *bubbleBox {
@@ -74,7 +76,8 @@ func (b *bubbleBox) SetText(text string) {
 	if b.isAI && b.richText != nil {
 		// AI 消息使用 Markdown 渲染
 		renderer := NewMarkdownRenderer()
-		b.richText.SetSegments(renderer.ToMarkup(text))
+		b.richText.Segments = renderer.ToMarkup(text)
+		b.richText.Refresh()
 	} else {
 		b.label.SetText(text)
 	}
@@ -90,7 +93,7 @@ type ChatView struct {
 	currentBubble *bubbleBox
 	bubbleMu      sync.Mutex
 	maxWidth      float32
-	isLoading     bool
+	isLoading     atomic.Bool
 	loadingLabel  *widget.Label
 }
 
@@ -113,7 +116,7 @@ func (cv *ChatView) init() {
 
 	cv.sendBtn = widget.NewButton("发送", func() {
 		text := cv.input.Text
-		if text != "" && !cv.isLoading {
+		if text != "" && !cv.isLoading.Load() {
 			cv.onSend(text)
 			cv.input.SetText("")
 		}
@@ -171,12 +174,13 @@ func (cv *ChatView) AddAIMessageChunk(text string) {
 	defer cv.bubbleMu.Unlock()
 
 	if cv.currentBubble != nil {
-		current := cv.currentBubble.label.Text
-		if current == thinkingPlaceholder {
-			cv.currentBubble.SetText(text)
+		if cv.currentBubble.accumulatedText == "" {
+			// 第一个 chunk，替换占位符
+			cv.currentBubble.accumulatedText = text
 		} else {
-			cv.currentBubble.SetText(current + text)
+			cv.currentBubble.accumulatedText += text
 		}
+		cv.currentBubble.SetText(cv.currentBubble.accumulatedText)
 		cv.scroll.ScrollToBottom()
 	}
 }
@@ -185,13 +189,13 @@ func (cv *ChatView) AddAIMessageEnd() {
 	cv.bubbleMu.Lock()
 	defer cv.bubbleMu.Unlock()
 	cv.currentBubble = nil
-	cv.isLoading = false
+	cv.isLoading.Store(false)
 	cv.loadingLabel.Hide()
 	cv.sendBtn.Enable()
 }
 
 func (cv *ChatView) SetLoading(loading bool) {
-	cv.isLoading = loading
+	cv.isLoading.Store(loading)
 	if loading {
 		cv.loadingLabel.SetText("正在思考...")
 		cv.loadingLabel.Show()

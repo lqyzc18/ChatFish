@@ -1,16 +1,17 @@
 package gui
 
 import (
+	"net/url"
 	"strings"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/widget"
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/ast"
-	"github.com/yuin/goldmark/text"
+	gmtext "github.com/yuin/goldmark/text"
 )
 
-// MarkdownRenderer 将 Markdown 文本转换为 Fyne RichText Markup
+// MarkdownRenderer 将 Markdown 文本转换为 Fyne RichTextSegment
 type MarkdownRenderer struct {
 	parser goldmark.Markdown
 }
@@ -22,28 +23,26 @@ func NewMarkdownRenderer() *MarkdownRenderer {
 	}
 }
 
-// ToMarkup 将 Markdown 文本转换为 Fyne Markup 列表
-func (m *MarkdownRenderer) ToMarkup(text string) []widget.Markup {
-	if text == "" {
+// ToMarkup 将 Markdown 文本转换为 Fyne RichTextSegment 列表
+func (m *MarkdownRenderer) ToMarkup(md string) []widget.RichTextSegment {
+	if md == "" {
 		return nil
 	}
 
-	// 解析 Markdown
-	reader := text.NewReader([]byte(text))
+	reader := gmtext.NewReader([]byte(md))
 	doc := m.parser.Parser().Parse(reader)
 
-	var result []widget.Markup
-	// 遍历文档节点
+	var result []widget.RichTextSegment
 	for child := doc.FirstChild(); child != nil; child = child.NextSibling() {
-		markups := m.renderNode(child, text)
-		result = append(result, markups...)
+		segs := m.renderNode(child, md)
+		result = append(result, segs...)
 	}
 
 	return result
 }
 
 // renderNode 渲染单个 AST 节点
-func (m *MarkdownRenderer) renderNode(node ast.Node, source string) []widget.Markup {
+func (m *MarkdownRenderer) renderNode(node ast.Node, source string) []widget.RichTextSegment {
 	switch n := node.(type) {
 	case *ast.Document:
 		return m.renderChildren(n, source)
@@ -64,11 +63,11 @@ func (m *MarkdownRenderer) renderNode(node ast.Node, source string) []widget.Mar
 	case *ast.Blockquote:
 		return m.renderBlockquote(n, source)
 	case *ast.ThematicBreak:
-		return []widget.Markup{widget.NewText("\n")}
+		return []widget.RichTextSegment{textSeg("\n", widget.RichTextStyleParagraph)}
 	case *ast.Text:
 		return m.renderText(n, source)
 	case *ast.String:
-		return []widget.Markup{widget.NewText(string(n.Value))}
+		return []widget.RichTextSegment{textSeg(string(n.Value), widget.RichTextStyleInline)}
 	case *ast.CodeSpan:
 		return m.renderCodeSpan(n, source)
 	case *ast.Emphasis:
@@ -85,115 +84,107 @@ func (m *MarkdownRenderer) renderNode(node ast.Node, source string) []widget.Mar
 }
 
 // renderChildren 渲染子节点
-func (m *MarkdownRenderer) renderChildren(node ast.Node, source string) []widget.Markup {
-	var result []widget.Markup
+func (m *MarkdownRenderer) renderChildren(node ast.Node, source string) []widget.RichTextSegment {
+	var result []widget.RichTextSegment
 	for child := node.FirstChild(); child != nil; child = child.NextSibling() {
-		markups := m.renderNode(child, source)
-		result = append(result, markups...)
+		segs := m.renderNode(child, source)
+		result = append(result, segs...)
 	}
 	return result
 }
 
 // renderHeading 渲染标题
-func (m *MarkdownRenderer) renderHeading(node *ast.Heading, source string) []widget.Markup {
-	var sb strings.Builder
-	sb.WriteString("\n")
-
-	// 根据标题级别添加标记
-	for i := 0; i < node.Level; i++ {
-		sb.WriteString("#")
-	}
-	sb.WriteString(" ")
-
-	// 渲染标题内容
+func (m *MarkdownRenderer) renderHeading(node *ast.Heading, source string) []widget.RichTextSegment {
 	content := m.getChildrenText(node, source)
-	sb.WriteString(content)
-	sb.WriteString("\n")
 
-	return []widget.Markup{widget.NewText(sb.String())}
+	style := widget.RichTextStyleHeading
+	switch node.Level {
+	case 1:
+		style.SizeName = fyne.ThemeSizeName("heading")
+	case 2:
+		style.SizeName = fyne.ThemeSizeName("subHeading")
+	default:
+		style.SizeName = fyne.ThemeSizeName("caption")
+		style.TextStyle = fyne.TextStyle{Bold: true}
+	}
+
+	return []widget.RichTextSegment{
+		textSeg("\n", widget.RichTextStyleParagraph),
+		textSeg(content, style),
+		textSeg("\n", widget.RichTextStyleParagraph),
+	}
 }
 
 // renderParagraph 渲染段落
-func (m *MarkdownRenderer) renderParagraph(node *ast.Paragraph, source string) []widget.Markup {
-	var markups []widget.Markup
-	markups = append(markups, m.renderChildren(node, source)...)
-	markups = append(markups, widget.NewText("\n"))
-	return markups
+func (m *MarkdownRenderer) renderParagraph(node *ast.Paragraph, source string) []widget.RichTextSegment {
+	segs := m.renderChildren(node, source)
+	segs = append(segs, textSeg("\n", widget.RichTextStyleParagraph))
+	return segs
 }
 
 // renderTextBlock 渲染文本块
-func (m *MarkdownRenderer) renderTextBlock(node *ast.TextBlock, source string) []widget.Markup {
+func (m *MarkdownRenderer) renderTextBlock(node *ast.TextBlock, source string) []widget.RichTextSegment {
 	return m.renderChildren(node, source)
 }
 
 // renderList 渲染列表
-func (m *MarkdownRenderer) renderList(node *ast.List, source string) []widget.Markup {
-	var markups []widget.Markup
-	markups = append(markups, widget.NewText("\n"))
-	markups = append(markups, m.renderChildren(node, source)...)
-	return markups
+func (m *MarkdownRenderer) renderList(node *ast.List, source string) []widget.RichTextSegment {
+	var segs []widget.RichTextSegment
+	segs = append(segs, textSeg("\n", widget.RichTextStyleParagraph))
+	segs = append(segs, m.renderChildren(node, source)...)
+	return segs
 }
 
 // renderListItem 渲染列表项
-func (m *MarkdownRenderer) renderListItem(node *ast.ListItem, source string) []widget.Markup {
-	var sb strings.Builder
-
-	if node.ListFlags&ast.ListItemNumbered != 0 {
-		sb.WriteString("  1. ")
+func (m *MarkdownRenderer) renderListItem(node *ast.ListItem, source string) []widget.RichTextSegment {
+	var prefix string
+	if parent, ok := node.Parent().(*ast.List); ok && parent.IsOrdered() {
+		prefix = "  1. "
 	} else {
-		sb.WriteString("  • ")
+		prefix = "  • "
 	}
-
 	content := m.getChildrenText(node, source)
-	sb.WriteString(content)
-	sb.WriteString("\n")
-
-	return []widget.Markup{widget.NewText(sb.String())}
+	return []widget.RichTextSegment{
+		textSeg(prefix+content+"\n", widget.RichTextStyleParagraph),
+	}
 }
 
 // renderCodeBlock 渲染代码块
-func (m *MarkdownRenderer) renderCodeBlock(node *ast.CodeBlock, source string) []widget.Markup {
+func (m *MarkdownRenderer) renderCodeBlock(node *ast.CodeBlock, source string) []widget.RichTextSegment {
 	var sb strings.Builder
-	sb.WriteString("\n```\n")
-
+	sb.WriteString("\n")
+	src := []byte(source)
 	for line := node.FirstChild(); line != nil; line = line.NextSibling() {
-		if text, ok := line.(*ast.Text); ok {
-			sb.Write(text.Value)
+		if t, ok := line.(*ast.Text); ok {
+			sb.Write(t.Value(src))
 			sb.WriteString("\n")
 		}
 	}
-
-	sb.WriteString("```\n")
-	return []widget.Markup{widget.NewText(sb.String())}
+	return []widget.RichTextSegment{
+		textSeg(sb.String(), widget.RichTextStyleCodeBlock),
+	}
 }
 
 // renderFencedCodeBlock 渲染围栏代码块
-func (m *MarkdownRenderer) renderFencedCodeBlock(node *ast.FencedCodeBlock, source string) []widget.Markup {
+func (m *MarkdownRenderer) renderFencedCodeBlock(node *ast.FencedCodeBlock, source string) []widget.RichTextSegment {
 	var sb strings.Builder
-	sb.WriteString("\n```\n")
-
-	if node.Language != nil {
-		sb.WriteString("语言: ")
-		sb.Write(node.Language)
-		sb.WriteString("\n")
-	}
-
+	sb.WriteString("\n")
+	src := []byte(source)
 	for line := node.FirstChild(); line != nil; line = line.NextSibling() {
-		if text, ok := line.(*ast.Text); ok {
-			sb.Write(text.Value)
+		if t, ok := line.(*ast.Text); ok {
+			sb.Write(t.Value(src))
 			sb.WriteString("\n")
 		}
 	}
-
-	sb.WriteString("```\n")
-	return []widget.Markup{widget.NewText(sb.String())}
+	return []widget.RichTextSegment{
+		textSeg(sb.String(), widget.RichTextStyleCodeBlock),
+	}
 }
 
 // renderBlockquote 渲染引用块
-func (m *MarkdownRenderer) renderBlockquote(node *ast.Blockquote, source string) []widget.Markup {
+func (m *MarkdownRenderer) renderBlockquote(node *ast.Blockquote, source string) []widget.RichTextSegment {
 	var sb strings.Builder
 	sb.WriteString("\n")
-
 	for child := node.FirstChild(); child != nil; child = child.NextSibling() {
 		content := m.getChildrenText(child, source)
 		lines := strings.Split(content, "\n")
@@ -205,91 +196,96 @@ func (m *MarkdownRenderer) renderBlockquote(node *ast.Blockquote, source string)
 			}
 		}
 	}
-
-	return []widget.Markup{widget.NewText(sb.String())}
+	return []widget.RichTextSegment{
+		textSeg(sb.String(), widget.RichTextStyleBlockquote),
+	}
 }
 
 // renderText 渲染文本节点
-func (m *MarkdownRenderer) renderText(node *ast.Text, source string) []widget.Markup {
-	text := string(node.Value)
+func (m *MarkdownRenderer) renderText(node *ast.Text, source string) []widget.RichTextSegment {
+	t := string(node.Value([]byte(source)))
 	if node.SoftLineBreak() {
-		text += " "
+		t += " "
 	}
-	return []widget.Markup{widget.NewText(text)}
+	return []widget.RichTextSegment{textSeg(t, widget.RichTextStyleInline)}
 }
 
 // renderCodeSpan 渲染行内代码
-func (m *MarkdownRenderer) renderCodeSpan(node *ast.CodeSpan, source string) []widget.Markup {
+func (m *MarkdownRenderer) renderCodeSpan(node *ast.CodeSpan, source string) []widget.RichTextSegment {
 	content := m.getChildrenText(node, source)
-	return []widget.Markup{widget.NewText("`" + content + "`")}
+	return []widget.RichTextSegment{textSeg(content, widget.RichTextStyleCodeInline)}
 }
 
 // renderEmphasis 渲染强调文本
-func (m *MarkdownRenderer) renderEmphasis(node *ast.Emphasis, source string) []widget.Markup {
+func (m *MarkdownRenderer) renderEmphasis(node *ast.Emphasis, source string) []widget.RichTextSegment {
 	content := m.getChildrenText(node, source)
-
 	switch node.Level {
 	case 1:
-		// 斜体
-		return []widget.Markup{widget.NewText("_" + content + "_")}
+		return []widget.RichTextSegment{textSeg(content, widget.RichTextStyleEmphasis)}
 	case 2:
-		// 粗体
-		return []widget.Markup{widget.NewText("**" + content + "**")}
-	case 3:
-		// 粗斜体
-		return []widget.Markup{widget.NewText("***" + content + "***")}
+		return []widget.RichTextSegment{textSeg(content, widget.RichTextStyleStrong)}
 	default:
-		return []widget.Markup{widget.NewText(content)}
+		return []widget.RichTextSegment{textSeg(content, widget.RichTextStyleInline)}
 	}
 }
 
 // renderLink 渲染链接
-func (m *MarkdownRenderer) renderLink(node *ast.Link, source string) []widget.Markup {
+func (m *MarkdownRenderer) renderLink(node *ast.Link, source string) []widget.RichTextSegment {
 	content := m.getChildrenText(node, source)
-	return []widget.Markup{widget.NewText(content + " (" + string(node.Destination) + ")")}
+	u, _ := url.Parse(string(node.Destination))
+	return []widget.RichTextSegment{
+		&widget.HyperlinkSegment{
+			Text: content,
+			URL:  u,
+		},
+	}
 }
 
 // renderAutoLink 渲染自动链接
-func (m *MarkdownRenderer) renderAutoLink(node *ast.AutoLink, source string) []widget.Markup {
-	return []widget.Markup{widget.NewText(string(node.URL(nil)))}
+func (m *MarkdownRenderer) renderAutoLink(node *ast.AutoLink, source string) []widget.RichTextSegment {
+	raw := string(node.URL(nil))
+	u, _ := url.Parse(raw)
+	return []widget.RichTextSegment{
+		&widget.HyperlinkSegment{
+			Text: raw,
+			URL:  u,
+		},
+	}
 }
 
 // renderRawHTML 渲染原始 HTML
-func (m *MarkdownRenderer) renderRawHTML(node *ast.RawHTML, source string) []widget.Markup {
-	var sb strings.Builder
-	for _, segment := range node.Segments {
-		sb.Write(segment.Value(source))
+func (m *MarkdownRenderer) renderRawHTML(node *ast.RawHTML, source string) []widget.RichTextSegment {
+	if node.Segments == nil {
+		return nil
 	}
-	return []widget.Markup{widget.NewText(sb.String())}
+	raw := node.Segments.Value([]byte(source))
+	return []widget.RichTextSegment{textSeg(string(raw), widget.RichTextStyleInline)}
 }
 
 // getChildrenText 获取节点所有子节点的文本内容
 func (m *MarkdownRenderer) getChildrenText(node ast.Node, source string) string {
 	var sb strings.Builder
+	src := []byte(source)
 	for child := node.FirstChild(); child != nil; child = child.NextSibling() {
 		switch n := child.(type) {
 		case *ast.Text:
-			sb.Write(n.Value)
+			sb.Write(n.Value(src))
 		case *ast.String:
 			sb.Write(n.Value)
 		case *ast.CodeSpan:
-			sb.WriteString("`")
 			sb.WriteString(m.getChildrenText(n, source))
-			sb.WriteString("`")
 		case *ast.Emphasis:
-			prefix := strings.Repeat("*", n.Level)
-			sb.WriteString(prefix)
 			sb.WriteString(m.getChildrenText(n, source))
-			sb.WriteString(prefix)
 		case *ast.Link:
-			content := m.getChildrenText(n, source)
-			sb.WriteString(content)
-			sb.WriteString(" (")
-			sb.Write(n.Destination)
-			sb.WriteString(")")
+			sb.WriteString(m.getChildrenText(n, source))
 		default:
 			sb.WriteString(m.getChildrenText(child, source))
 		}
 	}
 	return sb.String()
+}
+
+// textSeg 创建文本段的辅助函数
+func textSeg(t string, style widget.RichTextStyle) *widget.TextSegment {
+	return &widget.TextSegment{Text: t, Style: style}
 }

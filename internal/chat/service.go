@@ -16,7 +16,7 @@ import (
 
 const (
 	defaultBaseURL     = "https://api.minimaxi.com/v1"
-	defaultModel       = "MiniMax-M2.7"
+	defaultModel       = "MiniMax-M3"
 	maxHistoryMessages = 20
 	streamTimeout      = 60 * time.Second
 )
@@ -32,6 +32,7 @@ type Service struct {
 	guiOutput GUIStreamCallbacks
 	history   []*schema.Message
 	mu        sync.RWMutex
+	cancel    context.CancelFunc
 }
 
 type Option func(*Service)
@@ -40,18 +41,18 @@ func WithGUIOutput(callbacks GUIStreamCallbacks) Option {
 	return func(s *Service) { s.guiOutput = callbacks }
 }
 
-func NewService(apiKey, baseURL, model string, opts ...Option) (*Service, error) {
+func NewService(apiKey, baseURL, modelName string, opts ...Option) (*Service, error) {
 	if baseURL == "" {
 		baseURL = defaultBaseURL
 	}
-	if model == "" {
-		model = defaultModel
+	if modelName == "" {
+		modelName = defaultModel
 	}
 
 	ctx := context.Background()
 	cm, err := openai.NewChatModel(ctx, &openai.ChatModelConfig{
 		APIKey:  apiKey,
-		Model:   model,
+		Model:   modelName,
 		BaseURL: baseURL,
 		Timeout: streamTimeout,
 	})
@@ -119,6 +120,10 @@ func (s *Service) Chat(question string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), streamTimeout)
 	defer cancel()
 
+	s.mu.Lock()
+	s.cancel = cancel
+	s.mu.Unlock()
+
 	s.mu.RLock()
 	msgs := make([]*schema.Message, len(s.history), len(s.history)+1)
 	copy(msgs, s.history)
@@ -160,4 +165,11 @@ func (s *Service) GetHistory() []*schema.Message {
 	history := make([]*schema.Message, len(s.history))
 	copy(history, s.history)
 	return history
+}
+
+// Cancel 取消正在进行的请求
+func (s *Service) Cancel() {
+	if s.cancel != nil {
+		s.cancel()
+	}
 }

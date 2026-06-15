@@ -9,10 +9,6 @@ func themeSettingsIcon() fyne.Resource {
 	return theme.SettingsIcon()
 }
 
-func themeToggleIcon() fyne.Resource {
-	return theme.ViewRefreshIcon()
-}
-
 func clearIcon() fyne.Resource {
 	return theme.DeleteIcon()
 }

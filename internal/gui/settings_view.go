@@ -46,7 +46,7 @@ func (sv *SettingsView) init() {
 	}
 
 	sv.modelEntry = widget.NewEntry()
-	sv.modelEntry.SetPlaceHolder("MiniMax-M2.7 (默认)")
+	sv.modelEntry.SetPlaceHolder("MiniMax-M3 (默认)")
 	if sv.cfg != nil && sv.cfg.Model != "" {
 		sv.modelEntry.SetText(sv.cfg.Model)
 	}

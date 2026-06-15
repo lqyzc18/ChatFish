@@ -100,6 +100,10 @@ func (a *App) initChatService() {
 	if a.cfg.APIKey == "" {
 		return
 	}
+	// 取消旧服务正在进行的请求
+	if a.chatSvc != nil {
+		a.chatSvc.Cancel()
+	}
 	svc, err := chat.NewService(a.cfg.APIKey, a.cfg.BaseURL, a.cfg.Model, chat.WithGUIOutput(chat.GUIStreamCallbacks{
 		OnStart:  func() { fyne.Do(func() { a.chatView.AddAIMessageStart() }) },
 		OnChunk:  func(text string) { fyne.Do(func() { a.chatView.AddAIMessageChunk(text) }) },
