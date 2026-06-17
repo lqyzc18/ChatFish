@@ -1,6 +1,7 @@
 package gui
 
 import (
+	"fmt"
 	"net/url"
 	"strings"
 
@@ -139,7 +140,12 @@ func (m *MarkdownRenderer) renderList(node *ast.List, source string) []widget.Ri
 func (m *MarkdownRenderer) renderListItem(node *ast.ListItem, source string) []widget.RichTextSegment {
 	var prefix string
 	if parent, ok := node.Parent().(*ast.List); ok && parent.IsOrdered() {
-		prefix = "  1. "
+		// 通过遍历兄弟节点计算实际序号
+		idx := 1
+		for sibling := node.PreviousSibling(); sibling != nil; sibling = sibling.PreviousSibling() {
+			idx++
+		}
+		prefix = fmt.Sprintf("  %d. ", idx)
 	} else {
 		prefix = "  • "
 	}
@@ -232,7 +238,11 @@ func (m *MarkdownRenderer) renderEmphasis(node *ast.Emphasis, source string) []w
 // renderLink 渲染链接
 func (m *MarkdownRenderer) renderLink(node *ast.Link, source string) []widget.RichTextSegment {
 	content := m.getChildrenText(node, source)
-	u, _ := url.Parse(string(node.Destination))
+	u, err := url.Parse(string(node.Destination))
+	if err != nil {
+		// URL 解析失败时回退为纯文本
+		return []widget.RichTextSegment{textSeg(content, widget.RichTextStyleInline)}
+	}
 	return []widget.RichTextSegment{
 		&widget.HyperlinkSegment{
 			Text: content,
@@ -244,7 +254,10 @@ func (m *MarkdownRenderer) renderLink(node *ast.Link, source string) []widget.Ri
 // renderAutoLink 渲染自动链接
 func (m *MarkdownRenderer) renderAutoLink(node *ast.AutoLink, source string) []widget.RichTextSegment {
 	raw := string(node.URL(nil))
-	u, _ := url.Parse(raw)
+	u, err := url.Parse(raw)
+	if err != nil {
+		return []widget.RichTextSegment{textSeg(raw, widget.RichTextStyleInline)}
+	}
 	return []widget.RichTextSegment{
 		&widget.HyperlinkSegment{
 			Text: raw,

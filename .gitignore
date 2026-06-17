@@ -1,3 +1,21 @@
-config/config.yaml
+# Build artifacts
 bin/
 chatfish.exe
+*.exe
+
+# Config (contains secrets)
+config/config.yaml
+
+# Go
+vendor/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db

@@ -29,10 +29,12 @@ var (
 	errorTextColor = color.NRGBA{R: 211, G: 47, B: 47, A: 255}
 )
 
+// bubbleBox 封装单条消息的气泡组件，支持普通文本和 Markdown 渲染。
 type bubbleBox struct {
 	bg              *canvas.Rectangle
 	label           *widget.Label
 	richText        *widget.RichText
+	renderer        *MarkdownRenderer
 	isAI            bool
 	accumulatedText string
 }
@@ -40,21 +42,20 @@ type bubbleBox struct {
 func newBubbleBox(text string, bgColor color.Color, textColor color.Color, maxWidth float32, isAI bool) *bubbleBox {
 	bg := canvas.NewRectangle(bgColor)
 	bg.CornerRadius = bubbleCornerRadius
-	// 关键：强制设置一个最小宽度，防止 HBox 将其压缩为 1 字符宽
+	// 强制设置最小宽度，防止 HBox 将气泡压缩为 1 字符宽
 	bg.SetMinSize(fyne.NewSize(maxWidth*0.8, 0))
 
 	bb := &bubbleBox{
-		bg:   bg,
-		isAI: isAI,
+		bg:       bg,
+		isAI:     isAI,
+		renderer: NewMarkdownRenderer(),
 	}
 
 	if isAI {
-		// AI 消息使用 RichText 支持 Markdown
 		richText := widget.NewRichText()
 		richText.Wrapping = fyne.TextWrapWord
 		bb.richText = richText
 	} else {
-		// 用户消息使用普通 Label
 		label := widget.NewLabel(text)
 		label.Wrapping = fyne.TextWrapWord
 		bb.label = label
@@ -63,6 +64,7 @@ func newBubbleBox(text string, bgColor color.Color, textColor color.Color, maxWi
 	return bb
 }
 
+// Container 返回气泡的 Fyne CanvasObject 容器。
 func (b *bubbleBox) Container() fyne.CanvasObject {
 	if b.isAI && b.richText != nil {
 		padded := container.NewPadded(b.richText)
@@ -72,17 +74,17 @@ func (b *bubbleBox) Container() fyne.CanvasObject {
 	return container.NewStack(b.bg, padded)
 }
 
+// SetText 更新气泡内容，AI 消息会通过 Markdown 渲染器转换。
 func (b *bubbleBox) SetText(text string) {
 	if b.isAI && b.richText != nil {
-		// AI 消息使用 Markdown 渲染
-		renderer := NewMarkdownRenderer()
-		b.richText.Segments = renderer.ToMarkup(text)
+		b.richText.Segments = b.renderer.ToMarkup(text)
 		b.richText.Refresh()
 	} else {
 		b.label.SetText(text)
 	}
 }
 
+// ChatView 是聊天界面的核心组件，包含消息列表、输入框和发送按钮。
 type ChatView struct {
 	container     *fyne.Container
 	scroll        *container.Scroll
@@ -97,6 +99,7 @@ type ChatView struct {
 	loadingLabel  *widget.Label
 }
 
+// NewChatView 创建聊天视图，onSend 为发送消息的回调。
 func NewChatView(onSend func(string), maxBubbleWidth float32) *ChatView {
 	cv := &ChatView{
 		onSend:   onSend,
@@ -134,6 +137,7 @@ func (cv *ChatView) init() {
 	cv.container = container.NewBorder(nil, container.NewVBox(cv.loadingLabel, separator, inputContainer), nil, nil, cv.scroll)
 }
 
+// Widget 返回聊天视图的根容器。
 func (cv *ChatView) Widget() fyne.CanvasObject {
 	return cv.container
 }
@@ -145,6 +149,7 @@ func (cv *ChatView) createBubbleRow(bubbleCanvas fyne.CanvasObject, alignLeft bo
 	return container.NewHBox(layout.NewSpacer(), bubbleCanvas)
 }
 
+// AddUserMessage 向消息列表添加一条用户消息气泡。
 func (cv *ChatView) AddUserMessage(text string) {
 	bubble := newBubbleBox(text, userBgColor, userTextColor, cv.maxWidth, false)
 	row := cv.createBubbleRow(bubble.Container(), false)
@@ -152,6 +157,7 @@ func (cv *ChatView) AddUserMessage(text string) {
 	cv.scroll.ScrollToBottom()
 }
 
+// AddAIMessageStart 创建一个新的 AI 消息气泡并显示"正在思考..."占位符。
 func (cv *ChatView) AddAIMessageStart() {
 	cv.bubbleMu.Lock()
 	defer cv.bubbleMu.Unlock()
@@ -169,13 +175,13 @@ func (cv *ChatView) AddAIMessageStart() {
 	cv.scroll.ScrollToBottom()
 }
 
+// AddAIMessageChunk 向当前 AI 消息气泡追加一个文本片段。
 func (cv *ChatView) AddAIMessageChunk(text string) {
 	cv.bubbleMu.Lock()
 	defer cv.bubbleMu.Unlock()
 
 	if cv.currentBubble != nil {
 		if cv.currentBubble.accumulatedText == "" {
-			// 第一个 chunk，替换占位符
 			cv.currentBubble.accumulatedText = text
 		} else {
 			cv.currentBubble.accumulatedText += text
@@ -185,6 +191,7 @@ func (cv *ChatView) AddAIMessageChunk(text string) {
 	}
 }
 
+// AddAIMessageEnd 标记当前 AI 消息接收完成，恢复输入状态。
 func (cv *ChatView) AddAIMessageEnd() {
 	cv.bubbleMu.Lock()
 	defer cv.bubbleMu.Unlock()
@@ -194,6 +201,7 @@ func (cv *ChatView) AddAIMessageEnd() {
 	cv.sendBtn.Enable()
 }
 
+// SetLoading 设置加载状态，控制发送按钮和提示标签的显隐。
 func (cv *ChatView) SetLoading(loading bool) {
 	cv.isLoading.Store(loading)
 	if loading {
@@ -206,20 +214,7 @@ func (cv *ChatView) SetLoading(loading bool) {
 	}
 }
 
-func (cv *ChatView) AddAIMessage(text string) {
-	bubble := newBubbleBox(text, aiBgColor, aiTextColor, cv.maxWidth, true)
-	roleLabel := canvas.NewText("AI", primaryColor)
-	roleLabel.TextStyle = fyne.TextStyle{Bold: true}
-	roleLabel.TextSize = 12
-
-	bubbleCanvas := bubble.Container()
-	contentCol := container.NewVBox(roleLabel, bubbleCanvas)
-	row := cv.createBubbleRow(contentCol, true)
-
-	cv.messageList.Add(row)
-	cv.scroll.ScrollToBottom()
-}
-
+// ShowError 在消息列表底部显示一条错误提示。
 func (cv *ChatView) ShowError(text string) {
 	errLabel := canvas.NewText("错误: "+text, errorTextColor)
 	errLabel.TextSize = 13
@@ -227,6 +222,7 @@ func (cv *ChatView) ShowError(text string) {
 	cv.scroll.ScrollToBottom()
 }
 
+// Clear 清空消息列表并重置当前气泡状态。
 func (cv *ChatView) Clear() {
 	cv.bubbleMu.Lock()
 	defer cv.bubbleMu.Unlock()

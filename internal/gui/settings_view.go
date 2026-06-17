@@ -10,6 +10,7 @@ import (
 	"chatfish/internal/config"
 )
 
+// SettingsView 是设置页面的视图组件，提供 API 配置的表单界面。
 type SettingsView struct {
 	container    *fyne.Container
 	apiKeyEntry  *widget.Entry
@@ -22,6 +23,7 @@ type SettingsView struct {
 	onCancel     func()
 }
 
+// NewSettingsView 创建设置视图，cfg 为当前配置，onSave 为保存回调，onCancel 为取消回调。
 func NewSettingsView(cfg *config.Config, onSave func(*config.Config), onCancel func()) *SettingsView {
 	sv := &SettingsView{
 		cfg:      cfg,
@@ -90,6 +92,7 @@ func (sv *SettingsView) init() {
 	)
 }
 
+// Widget 返回设置视图的根容器。
 func (sv *SettingsView) Widget() fyne.CanvasObject {
 	return container.NewPadded(sv.container)
 }

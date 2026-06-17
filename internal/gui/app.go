@@ -5,6 +5,7 @@ import (
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
 
@@ -18,6 +19,7 @@ const (
 	windowHeight = 700
 )
 
+// App 是 ChatFish 应用的顶层结构，管理窗口生命周期和各组件的协调。
 type App struct {
 	fyneApp        fyne.App
 	mainWindow     fyne.Window
@@ -28,6 +30,7 @@ type App struct {
 	cfg            *config.Config
 }
 
+// Run 启动 ChatFish 应用，初始化 GUI 并阻塞在主事件循环中。
 func Run() {
 	a := app.NewWithID("com.chatfish.app")
 	a.Settings().SetTheme(&customLightTheme{})
@@ -48,7 +51,9 @@ func Run() {
 func (a *App) init() {
 	cfg, err := config.Load()
 	if err != nil {
+		// 配置加载失败时提示用户，使用空配置继续运行
 		cfg = &config.Config{}
+		dialog.ShowError(err, a.mainWindow)
 	}
 	a.cfg = cfg
 
@@ -108,6 +113,7 @@ func (a *App) initChatService() {
 		OnStart:  func() { fyne.Do(func() { a.chatView.AddAIMessageStart() }) },
 		OnChunk:  func(text string) { fyne.Do(func() { a.chatView.AddAIMessageChunk(text) }) },
 		OnFinish: func() { fyne.Do(func() { a.chatView.AddAIMessageEnd() }) },
+		OnError:  func(err error) { fyne.Do(func() { a.chatView.ShowError("流式响应异常: " + err.Error()) }) },
 	}))
 	if err != nil {
 		a.chatView.ShowError("初始化 AI 服务失败: " + err.Error())
@@ -171,7 +177,7 @@ func (a *App) showHelp() {
 	content1 := widget.NewLabelWithStyle("基本功能", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
 	items1 := widget.NewLabel("  • 发送消息：在输入框中输入消息，按回车或点击发送按钮\n  • 清除对话：点击工具栏的清除按钮\n  • 设置：点击工具栏的设置按钮配置 API Key")
 	content2 := widget.NewLabelWithStyle("快捷操作", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
-	items2 := widget.NewLabel("  • Ctrl+Enter：发送消息\n  • Enter：换行")
+	items2 := widget.NewLabel("  • 点击发送按钮或按 Enter 后换行再点发送：发送消息\n  • Enter：换行")
 	closeBtn := widget.NewButton("关闭", func() { helpWindow.Close() })
 
 	box := container.NewVBox(title, widget.NewSeparator(), content1, items1, widget.NewSeparator(), content2, items2, widget.NewSeparator(), closeBtn)
