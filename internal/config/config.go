@@ -61,20 +61,10 @@ func Save(cfg *Config) error {
 }
 
 func getConfigPath() (string, error) {
-	execPath, err := os.Executable()
+	configDir, err := os.UserConfigDir()
 	if err != nil {
-		return "", fmt.Errorf("get executable path: %w", err)
+		return "", fmt.Errorf("get user config dir: %w", err)
 	}
 
-	cfgPath := filepath.Join(filepath.Dir(execPath), "config", "config.yaml")
-
-	if _, err := os.Stat(cfgPath); os.IsNotExist(err) {
-		cwd, err := os.Getwd()
-		if err != nil {
-			return "", fmt.Errorf("get working directory: %w", err)
-		}
-		cfgPath = filepath.Join(cwd, "config", "config.yaml")
-	}
-
-	return cfgPath, nil
+	return filepath.Join(configDir, "ChatFish", "config.yaml"), nil
 }

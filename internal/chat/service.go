@@ -119,6 +119,11 @@ func (s *Service) streamResponse(ctx context.Context, msgs []*schema.Message) (s
 func (s *Service) Chat(question string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), streamTimeout)
 	defer cancel()
+	defer func() {
+		s.mu.Lock()
+		s.cancel = nil
+		s.mu.Unlock()
+	}()
 
 	// 在同一把锁内完成 cancel 赋值和 history 拷贝，消除竞态窗口
 	s.mu.Lock()
@@ -134,6 +139,9 @@ func (s *Service) Chat(question string) error {
 
 	response, err := s.streamResponse(ctx, msgs)
 	if err != nil {
+		if errors.Is(err, context.Canceled) {
+			return nil
+		}
 		// 通知 GUI 流式错误
 		if s.guiOutput.OnError != nil {
 			s.guiOutput.OnError(err)

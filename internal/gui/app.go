@@ -1,11 +1,14 @@
 package gui
 
 import (
+	"strings"
+
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
+	"fyne.io/fyne/v2/driver/desktop"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
 
@@ -80,17 +83,26 @@ func (a *App) init() {
 	a.mainWindow.SetContent(content)
 
 	if a.cfg.APIKey != "" {
-		a.initChatService()
+		if err := a.initChatService(); err != nil {
+			a.chatView.ShowError("初始化 AI 服务失败: " + err.Error())
+		}
 	}
+
+	// 注册 Ctrl+Enter 发送快捷键
+	ctrlEnter := &desktop.CustomShortcut{KeyName: fyne.KeyReturn, Modifier: fyne.KeyModifierControl}
+	a.mainWindow.Canvas().AddShortcut(ctrlEnter, func(shortcut fyne.Shortcut) {
+		a.chatView.sendBtn.Tapped(&fyne.PointEvent{})
+	})
 }
 
 func (a *App) createToolbar() *widget.Toolbar {
 	return widget.NewToolbar(
 		widget.NewToolbarAction(clearIcon(), func() {
-			a.chatView.Clear()
 			if a.chatSvc != nil {
+				a.chatSvc.Cancel()
 				a.chatSvc.ClearHistory()
 			}
+			a.chatView.Clear()
 		}),
 		widget.NewToolbarAction(themeSettingsIcon(), func() {
 			a.showSettings()
@@ -101,13 +113,15 @@ func (a *App) createToolbar() *widget.Toolbar {
 	)
 }
 
-func (a *App) initChatService() {
-	if a.cfg.APIKey == "" {
-		return
-	}
+func (a *App) initChatService() error {
 	// 取消旧服务正在进行的请求
 	if a.chatSvc != nil {
 		a.chatSvc.Cancel()
+		a.chatSvc = nil
+	}
+
+	if strings.TrimSpace(a.cfg.APIKey) == "" {
+		return nil
 	}
 	svc, err := chat.NewService(a.cfg.APIKey, a.cfg.BaseURL, a.cfg.Model, chat.WithGUIOutput(chat.GUIStreamCallbacks{
 		OnStart:  func() { fyne.Do(func() { a.chatView.AddAIMessageStart() }) },
@@ -116,36 +130,40 @@ func (a *App) initChatService() {
 		OnError:  func(err error) { fyne.Do(func() { a.chatView.ShowError("流式响应异常: " + err.Error()) }) },
 	}))
 	if err != nil {
-		a.chatView.ShowError("初始化 AI 服务失败: " + err.Error())
-		return
+		return err
 	}
 	a.chatSvc = svc
+	return nil
 }
 
 func (a *App) onSendMessage(text string) {
-	if a.chatSvc == nil {
+	svc := a.chatSvc
+	if svc == nil {
 		a.chatView.ShowError("请先在设置中配置 API Key")
 		return
 	}
 	a.chatView.AddUserMessage(text)
 	a.chatView.SetLoading(true)
 	go func() {
-		if err := a.chatSvc.Chat(text); err != nil {
+		if err := svc.Chat(text); err != nil {
 			fyne.Do(func() {
-				a.chatView.ShowError("发送消息失败: " + err.Error())
 				a.chatView.SetLoading(false)
 			})
 		}
 	}()
 }
 
-func (a *App) onSettingsSave(cfg *config.Config) {
+func (a *App) onSettingsSave(cfg *config.Config) error {
 	a.cfg = cfg
 	if err := config.Save(cfg); err != nil {
 		a.chatView.ShowError("保存配置失败: " + err.Error())
-		return
+		return err
 	}
-	a.initChatService()
+	if err := a.initChatService(); err != nil {
+		a.chatView.ShowError("初始化 AI 服务失败: " + err.Error())
+		return err
+	}
+	return nil
 }
 
 func (a *App) closeSettingsWindow() {

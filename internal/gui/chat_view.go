@@ -20,13 +20,20 @@ const (
 )
 
 var (
-	primaryColor   = color.NRGBA{R: 66, G: 133, B: 244, A: 255}
-	userBgColor    = color.NRGBA{R: 66, G: 133, B: 244, A: 255}
-	aiBgColor      = color.NRGBA{R: 241, G: 243, B: 244, A: 255}
-	userTextColor  = color.NRGBA{R: 255, G: 255, B: 255, A: 255}
-	aiTextColor    = color.NRGBA{R: 32, G: 33, B: 36, A: 255}
-	separatorColor = color.NRGBA{R: 218, G: 220, B: 224, A: 255}
-	errorTextColor = color.NRGBA{R: 211, G: 47, B: 47, A: 255}
+	primaryColor     = color.NRGBA{R: 66, G: 133, B: 244, A: 255}
+	userBgColor      = color.NRGBA{R: 66, G: 133, B: 244, A: 255}
+	aiBgColor        = color.NRGBA{R: 241, G: 243, B: 244, A: 255}
+	userTextColor    = color.NRGBA{R: 255, G: 255, B: 255, A: 255}
+	aiTextColor      = color.NRGBA{R: 32, G: 33, B: 36, A: 255}
+	separatorColor   = color.NRGBA{R: 218, G: 220, B: 224, A: 255}
+	errorTextColor   = color.NRGBA{R: 211, G: 47, B: 47, A: 255}
+	disabledColor    = color.NRGBA{R: 189, G: 189, B: 189, A: 255}
+	placeholderColor = color.NRGBA{R: 154, G: 160, B: 166, A: 255}
+	inputBgColor     = color.NRGBA{R: 245, G: 245, B: 245, A: 255}
+	hoverColor       = color.NRGBA{R: 232, G: 240, B: 254, A: 255}
+	focusColor       = color.NRGBA{R: 210, G: 227, B: 252, A: 255}
+	shadowColor      = color.NRGBA{R: 0, G: 0, B: 0, A: 30}
+	backgroundColor  = color.NRGBA{R: 255, G: 255, B: 255, A: 255}
 )
 
 // bubbleBox 封装单条消息的气泡组件，支持普通文本和 Markdown 渲染。
@@ -37,6 +44,7 @@ type bubbleBox struct {
 	renderer        *MarkdownRenderer
 	isAI            bool
 	accumulatedText string
+	segments        []widget.RichTextSegment
 }
 
 func newBubbleBox(text string, bgColor color.Color, textColor color.Color, maxWidth float32, isAI bool) *bubbleBox {
@@ -163,6 +171,8 @@ func (cv *ChatView) AddAIMessageStart() {
 	defer cv.bubbleMu.Unlock()
 
 	cv.currentBubble = newBubbleBox(thinkingPlaceholder, aiBgColor, aiTextColor, cv.maxWidth, true)
+	cv.currentBubble.segments = cv.currentBubble.renderer.ToMarkup(thinkingPlaceholder)
+	cv.currentBubble.richText.Segments = cv.currentBubble.segments
 	bubbleCanvas := cv.currentBubble.Container()
 
 	roleLabel := canvas.NewText("AI", primaryColor)
@@ -181,12 +191,11 @@ func (cv *ChatView) AddAIMessageChunk(text string) {
 	defer cv.bubbleMu.Unlock()
 
 	if cv.currentBubble != nil {
-		if cv.currentBubble.accumulatedText == "" {
-			cv.currentBubble.accumulatedText = text
-		} else {
-			cv.currentBubble.accumulatedText += text
-		}
-		cv.currentBubble.SetText(cv.currentBubble.accumulatedText)
+		cv.currentBubble.accumulatedText += text
+		cv.currentBubble.segments = cv.currentBubble.renderer.AppendMarkup(
+			cv.currentBubble.segments, cv.currentBubble.accumulatedText, text)
+		cv.currentBubble.richText.Segments = cv.currentBubble.segments
+		cv.currentBubble.richText.Refresh()
 		cv.scroll.ScrollToBottom()
 	}
 }
@@ -229,4 +238,7 @@ func (cv *ChatView) Clear() {
 	cv.messageList.Objects = nil
 	cv.messageList.Refresh()
 	cv.currentBubble = nil
+	cv.isLoading.Store(false)
+	cv.loadingLabel.Hide()
+	cv.sendBtn.Enable()
 }

@@ -28,8 +28,6 @@
 ```
 ChatFish/
 ├── main.go                    # GUI 应用入口
-├── config/
-│   └── config.yaml            # API 密钥配置文件（不提交到 Git）
 ├── internal/
 │   ├── chat/
 │   │   └── service.go         # AI 对话服务（流式 + 多轮历史）
@@ -49,13 +47,17 @@ ChatFish/
 
 ### 1. 配置密钥
 
-在可执行文件同级目录创建 `config/config.yaml`：
+推荐直接在应用 GUI 的设置界面中配置 API Key。
+
+配置文件会自动保存在系统用户配置目录下：
+- **Windows**: `%APPDATA%\ChatFish\config.yaml`
+- **macOS/Linux**: `~/.config/ChatFish/config.yaml`
+
+如果需要手动创建，可以按照上述路径创建文件并填入：
 
 ```yaml
 api_key: "your-minimax-api-key"
 ```
-
-或者在应用 GUI 中通过设置界面配置。
 
 ### 2. 编译运行
 
@@ -99,7 +101,7 @@ go run .
 
 ## 注意事项
 
-- `config/config.yaml` 包含敏感信息，已加入 `.gitignore`，不要提交到版本库
+- 配置文件统一存放在系统用户目录中，安全且不会被意外提交到版本库
 - 首次编译 fyne 应用可能需要较长时间（约 10 分钟），后续编译会很快
 - 应用支持跨平台运行（Windows、macOS、Linux）
 - 当前仅支持浅色主题

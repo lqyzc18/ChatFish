@@ -19,12 +19,12 @@ type SettingsView struct {
 	saveBtn      *widget.Button
 	cancelBtn    *widget.Button
 	cfg          *config.Config
-	onSave       func(*config.Config)
+	onSave       func(*config.Config) error
 	onCancel     func()
 }
 
 // NewSettingsView 创建设置视图，cfg 为当前配置，onSave 为保存回调，onCancel 为取消回调。
-func NewSettingsView(cfg *config.Config, onSave func(*config.Config), onCancel func()) *SettingsView {
+func NewSettingsView(cfg *config.Config, onSave func(*config.Config) error, onCancel func()) *SettingsView {
 	sv := &SettingsView{
 		cfg:      cfg,
 		onSave:   onSave,
@@ -107,7 +107,9 @@ func (sv *SettingsView) onSaveClick() {
 	sv.cfg.Model = sv.modelEntry.Text
 
 	if sv.onSave != nil {
-		sv.onSave(sv.cfg)
+		if err := sv.onSave(sv.cfg); err != nil {
+			return
+		}
 	}
 
 	if sv.onCancel != nil {
