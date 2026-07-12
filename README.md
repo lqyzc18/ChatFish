@@ -7,7 +7,7 @@
 
 - **流式输出** — 实时逐 token 显示 AI 响应，无需等待完整生成
 - **多轮对话** — 维护完整对话历史，支持上下文理解
-- **Markdown 渲染** — AI 响应支持 Markdown 格式渲染，代码块、列表、链接等清晰展示
+- **Markdown 渲染** — AI 响应支持 Markdown 格式渲染，代码块、列表、表格、链接、删除线等清晰展示
 - **现代化 GUI** — 使用 fyne 框架构建的跨平台桌面应用
 - **消息气泡** — 用户消息和 AI 响应以气泡样式展示
 - **配置灵活** — 支持 GUI 界面配置 API Key、Base URL 和模型
@@ -36,7 +36,6 @@ ChatFish/
 │   └── gui/
 │       ├── app.go             # 主应用窗口
 │       ├── chat_view.go       # 聊天界面组件
-│       ├── markdown.go        # Markdown 渲染器（goldmark → Fyne RichText）
 │       ├── settings_view.go   # 设置界面组件
 │       ├── theme.go           # 主题管理
 │       └── custom_theme.go    # 自定义浅色主题
@@ -101,6 +100,7 @@ go run .
 
 ## 注意事项
 
+- Markdown 渲染使用 Fyne 内置解析器，支持代码块、列表、表格、链接、删除线等原生渲染
 - 配置文件统一存放在系统用户目录中，安全且不会被意外提交到版本库
 - 首次编译 fyne 应用可能需要较长时间（约 10 分钟），后续编译会很快
 - 应用支持跨平台运行（Windows、macOS、Linux）

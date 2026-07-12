@@ -138,7 +138,7 @@ func (cv *ChatView) init() {
 	separator := canvas.NewRectangle(separatorColor)
 	separator.SetMinSize(fyne.NewSize(0, 1))
 
-	cv.container = container.NewBorder(nil, container.NewHBox(cv.activity, separator, inputContainer), nil, nil, cv.scroll)
+	cv.container = container.NewBorder(nil, container.NewVBox(cv.activity, separator, inputContainer), nil, nil, cv.scroll)
 }
 
 // Widget 返回聊天视图的根容器。
