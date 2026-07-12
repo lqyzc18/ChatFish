@@ -1,6 +1,8 @@
 package gui
 
 import (
+	"fmt"
+
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
@@ -37,6 +39,13 @@ func NewSettingsView(cfg *config.Config, onSave func(*config.Config) error, onCa
 func (sv *SettingsView) init() {
 	sv.apiKeyEntry = widget.NewPasswordEntry()
 	sv.apiKeyEntry.SetPlaceHolder("输入您的 API Key")
+	// API Key 必填校验：为空时阻止保存
+	sv.apiKeyEntry.Validator = func(s string) error {
+		if s == "" {
+			return fmt.Errorf("API Key 不能为空")
+		}
+		return nil
+	}
 	if sv.cfg != nil {
 		sv.apiKeyEntry.SetText(sv.cfg.APIKey)
 	}
@@ -55,6 +64,17 @@ func (sv *SettingsView) init() {
 
 	sv.saveBtn = widget.NewButton("保存", sv.onSaveClick)
 	sv.saveBtn.Importance = widget.HighImportance
+	// API Key 为空时初始禁用保存按钮
+	sv.saveBtn.Disable()
+
+	// 校验状态变化时自动控制保存按钮
+	sv.apiKeyEntry.SetOnValidationChanged(func(err error) {
+		if err != nil {
+			sv.saveBtn.Disable()
+		} else {
+			sv.saveBtn.Enable()
+		}
+	})
 
 	sv.cancelBtn = widget.NewButton("取消", func() {
 		if sv.onCancel != nil {
@@ -68,8 +88,11 @@ func (sv *SettingsView) init() {
 
 	desc := widget.NewLabel("配置 AI 对话服务参数")
 
+	apiKeyItem := widget.NewFormItem("API Key", sv.apiKeyEntry)
+	apiKeyItem.Required = true
+
 	form := widget.NewForm(
-		widget.NewFormItem("API Key", sv.apiKeyEntry),
+		apiKeyItem,
 		widget.NewFormItem("Base URL", sv.baseURLEntry),
 		widget.NewFormItem("Model", sv.modelEntry),
 	)
@@ -98,6 +121,11 @@ func (sv *SettingsView) Widget() fyne.CanvasObject {
 }
 
 func (sv *SettingsView) onSaveClick() {
+	// 先触发校验，校验不通过直接拦截
+	if err := sv.apiKeyEntry.Validate(); err != nil {
+		return
+	}
+
 	if sv.cfg == nil {
 		sv.cfg = &config.Config{}
 	}

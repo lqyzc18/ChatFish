@@ -41,10 +41,8 @@ type bubbleBox struct {
 	bg              *canvas.Rectangle
 	label           *widget.Label
 	richText        *widget.RichText
-	renderer        *MarkdownRenderer
 	isAI            bool
 	accumulatedText string
-	segments        []widget.RichTextSegment
 }
 
 func newBubbleBox(text string, bgColor color.Color, textColor color.Color, maxWidth float32, isAI bool) *bubbleBox {
@@ -54,9 +52,8 @@ func newBubbleBox(text string, bgColor color.Color, textColor color.Color, maxWi
 	bg.SetMinSize(fyne.NewSize(maxWidth*0.8, 0))
 
 	bb := &bubbleBox{
-		bg:       bg,
-		isAI:     isAI,
-		renderer: NewMarkdownRenderer(),
+		bg:   bg,
+		isAI: isAI,
 	}
 
 	if isAI {
@@ -82,11 +79,10 @@ func (b *bubbleBox) Container() fyne.CanvasObject {
 	return container.NewStack(b.bg, padded)
 }
 
-// SetText 更新气泡内容，AI 消息会通过 Markdown 渲染器转换。
+// SetText 更新气泡内容，AI 消息通过 Fyne 内置 Markdown 渲染器转换。
 func (b *bubbleBox) SetText(text string) {
 	if b.isAI && b.richText != nil {
-		b.richText.Segments = b.renderer.ToMarkup(text)
-		b.richText.Refresh()
+		b.richText.ParseMarkdown(text)
 	} else {
 		b.label.SetText(text)
 	}
@@ -104,7 +100,7 @@ type ChatView struct {
 	bubbleMu      sync.Mutex
 	maxWidth      float32
 	isLoading     atomic.Bool
-	loadingLabel  *widget.Label
+	activity      *widget.Activity
 }
 
 // NewChatView 创建聊天视图，onSend 为发送消息的回调。
@@ -134,15 +130,15 @@ func (cv *ChatView) init() {
 	})
 	cv.sendBtn.Importance = widget.HighImportance
 
-	cv.loadingLabel = widget.NewLabel("")
-	cv.loadingLabel.Hide()
+	cv.activity = widget.NewActivity()
+	cv.activity.Hide()
 
 	inputContainer := container.NewBorder(nil, nil, nil, cv.sendBtn, cv.input)
 
 	separator := canvas.NewRectangle(separatorColor)
 	separator.SetMinSize(fyne.NewSize(0, 1))
 
-	cv.container = container.NewBorder(nil, container.NewVBox(cv.loadingLabel, separator, inputContainer), nil, nil, cv.scroll)
+	cv.container = container.NewBorder(nil, container.NewHBox(cv.activity, separator, inputContainer), nil, nil, cv.scroll)
 }
 
 // Widget 返回聊天视图的根容器。
@@ -171,8 +167,7 @@ func (cv *ChatView) AddAIMessageStart() {
 	defer cv.bubbleMu.Unlock()
 
 	cv.currentBubble = newBubbleBox(thinkingPlaceholder, aiBgColor, aiTextColor, cv.maxWidth, true)
-	cv.currentBubble.segments = cv.currentBubble.renderer.ToMarkup(thinkingPlaceholder)
-	cv.currentBubble.richText.Segments = cv.currentBubble.segments
+	cv.currentBubble.richText.ParseMarkdown(thinkingPlaceholder)
 	bubbleCanvas := cv.currentBubble.Container()
 
 	roleLabel := canvas.NewText("AI", primaryColor)
@@ -192,10 +187,7 @@ func (cv *ChatView) AddAIMessageChunk(text string) {
 
 	if cv.currentBubble != nil {
 		cv.currentBubble.accumulatedText += text
-		cv.currentBubble.segments = cv.currentBubble.renderer.AppendMarkup(
-			cv.currentBubble.segments, cv.currentBubble.accumulatedText, text)
-		cv.currentBubble.richText.Segments = cv.currentBubble.segments
-		cv.currentBubble.richText.Refresh()
+		cv.currentBubble.richText.ParseMarkdown(cv.currentBubble.accumulatedText)
 		cv.scroll.ScrollToBottom()
 	}
 }
@@ -206,19 +198,20 @@ func (cv *ChatView) AddAIMessageEnd() {
 	defer cv.bubbleMu.Unlock()
 	cv.currentBubble = nil
 	cv.isLoading.Store(false)
-	cv.loadingLabel.Hide()
+	cv.activity.Hide()
 	cv.sendBtn.Enable()
 }
 
-// SetLoading 设置加载状态，控制发送按钮和提示标签的显隐。
+// SetLoading 设置加载状态，控制发送按钮和加载动画的显隐。
 func (cv *ChatView) SetLoading(loading bool) {
 	cv.isLoading.Store(loading)
 	if loading {
-		cv.loadingLabel.SetText("正在思考...")
-		cv.loadingLabel.Show()
+		cv.activity.Start()
+		cv.activity.Show()
 		cv.sendBtn.Disable()
 	} else {
-		cv.loadingLabel.Hide()
+		cv.activity.Stop()
+		cv.activity.Hide()
 		cv.sendBtn.Enable()
 	}
 }
@@ -239,6 +232,7 @@ func (cv *ChatView) Clear() {
 	cv.messageList.Refresh()
 	cv.currentBubble = nil
 	cv.isLoading.Store(false)
-	cv.loadingLabel.Hide()
+	cv.activity.Stop()
+	cv.activity.Hide()
 	cv.sendBtn.Enable()
 }
