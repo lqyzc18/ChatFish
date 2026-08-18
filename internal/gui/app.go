@@ -1,3 +1,8 @@
+// Package gui 负责桌面 GUI 端的窗口、控件与事件编排。
+//
+// 本文件的关键点是：把 chat/service 的回调“绑定到当前会话”，
+// 通过 chatVersion/minRequestID 过滤掉被取消或过期请求的迟到回调，
+// 避免 UI 出现错乱（例如：清空对话后旧回复又被渲染出来）。
 package gui
 
 import (
@@ -33,7 +38,9 @@ type App struct {
 	chatSvc        *chat.Service
 	cfg            *config.Config
 	chatVersion    atomic.Uint64
-	minRequestID   atomic.Uint64
+	// minRequestID 表示“最小可接受的 requestID”。
+	// 在用户点击清空/取消时会递增，从而让旧请求回调在 UI 过滤阶段被丢弃。
+	minRequestID atomic.Uint64
 }
 
 // Run 启动 ChatFish 应用，初始化 GUI 并阻塞在主事件循环中。
@@ -102,6 +109,7 @@ func (a *App) createToolbar() *widget.Toolbar {
 	return widget.NewToolbar(
 		widget.NewToolbarAction(clearIcon(), func() {
 			if a.chatSvc != nil {
+				// 将 minRequestID 提高到“刚取消那轮之后”，用于忽略旧请求的延迟回调渲染。
 				a.minRequestID.Store(a.chatSvc.Cancel() + 1)
 				a.chatSvc.ClearHistory()
 			}
@@ -131,6 +139,7 @@ func (a *App) initChatService() error {
 
 	svc, err := chat.NewService(a.cfg.APIKey, a.cfg.BaseURL, a.cfg.Model, chat.WithGUIOutput(chat.GUIStreamCallbacks{
 		OnStart: func(requestID uint64) {
+			// 这些回调可能来自模型流读取协程，因此必须通过 runForCurrentRequest + fyne.Do 保证 UI 安全。
 			a.runForCurrentRequest(version, requestID, func() { a.chatView.AddAIMessageStart() })
 		},
 		OnChunk: func(requestID uint64, text string) {
@@ -161,6 +170,7 @@ func (a *App) initChatService() error {
 
 func (a *App) runForCurrentRequest(version, requestID uint64, action func()) {
 	fyne.Do(func() {
+		// version 用于识别“配置/模型切换导致的服务重建”，minRequestID 用于识别“清空/取消后的过期请求”。
 		if a.chatVersion.Load() == version && requestID >= a.minRequestID.Load() {
 			action()
 		}
@@ -177,6 +187,8 @@ func (a *App) onSendMessage(text string) {
 	a.chatView.AddUserMessage(text)
 	a.chatView.SetLoading(true)
 	go func() {
+		// svc.Chat() 会在内部读取流并通过 GUIStreamCallbacks 推送增量内容。
+		// 这里只负责：等待 Chat() 结束后在“仍是当前版本且仍然是该 svc”时恢复 UI。
 		if err := svc.Chat(text); err != nil {
 			fyne.Do(func() {
 				if a.chatVersion.Load() == version && a.chatSvc == svc {

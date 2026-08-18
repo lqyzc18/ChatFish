@@ -93,6 +93,7 @@ type ChatView struct {
 	currentBubble *bubbleBox
 	bubbleMu      sync.Mutex
 	bubbleID      uint64
+	// renderPending 表示是否已调度一次“延迟刷新”，用于节流 Markdown 解析与滚动更新。
 	renderPending bool
 	maxWidth      float32
 	isLoading     atomic.Bool
@@ -159,6 +160,10 @@ func (cv *ChatView) AddUserMessage(text string) {
 
 // AddAIMessageStart 创建一个新的 AI 消息气泡并显示"正在思考..."占位符。
 func (cv *ChatView) AddAIMessageStart() {
+	// 启动一条新的 AI 消息气泡：
+	// - bubbleID 递增：用于让定时刷新（flushAIMessage）只作用于当前这轮渲染
+	// - currentBubble = 新的 RichText 容器
+	// - 立刻显示占位文本
 	cv.bubbleMu.Lock()
 	defer cv.bubbleMu.Unlock()
 
@@ -184,8 +189,10 @@ func (cv *ChatView) AddAIMessageChunk(text string) {
 	defer cv.bubbleMu.Unlock()
 
 	if cv.currentBubble != nil {
+		// 只把 token 追加到 streamText；真正的 Markdown Parse + ScrollToBottom 由 flushAIMessage 负责。
 		cv.currentBubble.streamText.WriteString(text)
 		if !cv.renderPending {
+			// 节流：避免每个 token 都 ParseMarkdown + ScrollToBottom（会导致 UI 卡顿）。
 			cv.renderPending = true
 			bubbleID := cv.bubbleID
 			time.AfterFunc(streamRenderInterval, func() {
@@ -199,6 +206,8 @@ func (cv *ChatView) flushAIMessage(bubbleID uint64) {
 	cv.bubbleMu.Lock()
 	defer cv.bubbleMu.Unlock()
 
+	// 定时器触发时检查 bubbleID 是否仍匹配：
+	// 若用户在同一时间段里 Clear/开启了新消息，则跳过旧定时刷新，避免错位渲染。
 	if cv.currentBubble == nil || cv.bubbleID != bubbleID {
 		return
 	}
@@ -210,6 +219,7 @@ func (cv *ChatView) renderCurrentBubble() {
 	if cv.currentBubble == nil || cv.currentBubble.streamText.Len() == 0 {
 		return
 	}
+	// 这里集中执行一次 ParseMarkdown + 滚动到底部，降低长回答下的 UI 重绘开销。
 	cv.currentBubble.richText.ParseMarkdown(cv.currentBubble.streamText.String())
 	cv.scroll.ScrollToBottom()
 }

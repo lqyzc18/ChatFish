@@ -68,7 +68,7 @@ func (sv *SettingsView) init() {
 	// API Key 为空时初始禁用保存按钮
 	sv.saveBtn.Disable()
 
-	// 校验状态变化时自动控制保存按钮
+	// 校验状态变化时自动控制保存按钮，避免用户误触保存导致后续初始化失败。
 	sv.apiKeyEntry.SetOnValidationChanged(func(err error) {
 		if err != nil {
 			sv.saveBtn.Disable()
