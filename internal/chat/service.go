@@ -21,12 +21,17 @@ const (
 	streamTimeout      = 60 * time.Second
 )
 
+var (
+	ErrEmptyQuestion     = errors.New("question cannot be empty")
+	ErrRequestInProgress = errors.New("a chat request is already in progress")
+)
+
 // GUIStreamCallbacks 定义流式对话过程中的 GUI 回调接口。
 type GUIStreamCallbacks struct {
-	OnStart  func()
-	OnChunk  func(text string)
-	OnFinish func()
-	OnError  func(err error)
+	OnStart  func(requestID uint64)
+	OnChunk  func(requestID uint64, text string)
+	OnFinish func(requestID uint64)
+	OnError  func(requestID uint64, err error)
 }
 
 // Service 封装 AI 对话服务，管理对话历史和流式响应。
@@ -36,6 +41,7 @@ type Service struct {
 	history   []*schema.Message
 	mu        sync.RWMutex
 	cancel    context.CancelFunc
+	requestID uint64
 }
 
 // Option 是 Service 的功能选项函数。
@@ -77,7 +83,7 @@ func NewService(apiKey, baseURL, modelName string, opts ...Option) (*Service, er
 }
 
 // streamResponse 执行流式请求并逐 chunk 回调 GUI。
-func (s *Service) streamResponse(ctx context.Context, msgs []*schema.Message) (string, error) {
+func (s *Service) streamResponse(ctx context.Context, msgs []*schema.Message, requestID uint64) (string, error) {
 	stream, err := s.chatModel.Stream(ctx, msgs)
 	if err != nil {
 		return "", fmt.Errorf("stream: %w", err)
@@ -85,8 +91,13 @@ func (s *Service) streamResponse(ctx context.Context, msgs []*schema.Message) (s
 	defer stream.Close()
 
 	if s.guiOutput.OnStart != nil {
-		s.guiOutput.OnStart()
+		s.guiOutput.OnStart(requestID)
 	}
+	defer func() {
+		if s.guiOutput.OnFinish != nil {
+			s.guiOutput.OnFinish(requestID)
+		}
+	}()
 
 	var sb strings.Builder
 	for {
@@ -95,61 +106,71 @@ func (s *Service) streamResponse(ctx context.Context, msgs []*schema.Message) (s
 			if errors.Is(err, io.EOF) {
 				break
 			}
-			// 流中断：通知 GUI 并返回已累积的内容和错误
-			if s.guiOutput.OnFinish != nil {
-				s.guiOutput.OnFinish()
-			}
 			return sb.String(), fmt.Errorf("recv: %w", err)
 		}
 		if len(chunk.Content) > 0 {
 			if s.guiOutput.OnChunk != nil {
-				s.guiOutput.OnChunk(chunk.Content)
+				s.guiOutput.OnChunk(requestID, chunk.Content)
 			}
 			sb.WriteString(chunk.Content)
 		}
 	}
 
-	if s.guiOutput.OnFinish != nil {
-		s.guiOutput.OnFinish()
-	}
 	return sb.String(), nil
 }
 
 // Chat 发送用户消息并以流式方式接收 AI 回复，回复会追加到对话历史中。
 func (s *Service) Chat(question string) error {
+	question = strings.TrimSpace(question)
+	if question == "" {
+		return ErrEmptyQuestion
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), streamTimeout)
-	defer cancel()
+
+	s.mu.Lock()
+	if s.cancel != nil {
+		s.mu.Unlock()
+		cancel()
+		return ErrRequestInProgress
+	}
+
+	s.requestID++
+	requestID := s.requestID
+	s.cancel = cancel
+	msgs := cloneMessages(s.history)
+	s.mu.Unlock()
 	defer func() {
+		cancel()
 		s.mu.Lock()
-		s.cancel = nil
+		if s.requestID == requestID {
+			s.cancel = nil
+		}
 		s.mu.Unlock()
 	}()
-
-	// 在同一把锁内完成 cancel 赋值和 history 拷贝，消除竞态窗口
-	s.mu.Lock()
-	s.cancel = cancel
-	msgs := make([]*schema.Message, len(s.history), len(s.history)+1)
-	copy(msgs, s.history)
-	s.mu.Unlock()
 
 	msgs = append(msgs, &schema.Message{
 		Role:    schema.User,
 		Content: question,
 	})
 
-	response, err := s.streamResponse(ctx, msgs)
+	response, err := s.streamResponse(ctx, msgs, requestID)
 	if err != nil {
 		if errors.Is(err, context.Canceled) {
 			return nil
 		}
 		// 通知 GUI 流式错误
 		if s.guiOutput.OnError != nil {
-			s.guiOutput.OnError(err)
+			s.guiOutput.OnError(requestID, err)
 		}
 		return err
 	}
 
 	s.mu.Lock()
+	defer s.mu.Unlock()
+	if ctx.Err() != nil || s.requestID != requestID {
+		return nil
+	}
 	s.history = append(s.history,
 		&schema.Message{Role: schema.User, Content: question},
 		&schema.Message{Role: schema.Assistant, Content: response},
@@ -158,7 +179,6 @@ func (s *Service) Chat(question string) error {
 	if len(s.history) > maxHistoryMessages {
 		s.history = s.history[len(s.history)-maxHistoryMessages:]
 	}
-	s.mu.Unlock()
 
 	return nil
 }
@@ -174,16 +194,29 @@ func (s *Service) ClearHistory() {
 func (s *Service) GetHistory() []*schema.Message {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	history := make([]*schema.Message, len(s.history))
-	copy(history, s.history)
-	return history
+	return cloneMessages(s.history)
 }
 
 // Cancel 取消正在进行的流式请求。
-func (s *Service) Cancel() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.cancel != nil {
-		s.cancel()
+func (s *Service) Cancel() uint64 {
+	s.mu.RLock()
+	cancel := s.cancel
+	requestID := s.requestID
+	s.mu.RUnlock()
+	if cancel != nil {
+		cancel()
 	}
+	return requestID
+}
+
+func cloneMessages(messages []*schema.Message) []*schema.Message {
+	cloned := make([]*schema.Message, len(messages))
+	for i, message := range messages {
+		if message == nil {
+			continue
+		}
+		copy := *message
+		cloned[i] = &copy
+	}
+	return cloned
 }

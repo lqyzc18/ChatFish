@@ -2,6 +2,7 @@ package gui
 
 import (
 	"fmt"
+	"strings"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
@@ -41,7 +42,7 @@ func (sv *SettingsView) init() {
 	sv.apiKeyEntry.SetPlaceHolder("输入您的 API Key")
 	// API Key 必填校验：为空时阻止保存
 	sv.apiKeyEntry.Validator = func(s string) error {
-		if s == "" {
+		if strings.TrimSpace(s) == "" {
 			return fmt.Errorf("API Key 不能为空")
 		}
 		return nil
@@ -75,6 +76,9 @@ func (sv *SettingsView) init() {
 			sv.saveBtn.Enable()
 		}
 	})
+	if err := sv.apiKeyEntry.Validate(); err == nil {
+		sv.saveBtn.Enable()
+	}
 
 	sv.cancelBtn = widget.NewButton("取消", func() {
 		if sv.onCancel != nil {

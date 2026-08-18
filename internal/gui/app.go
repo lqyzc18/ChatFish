@@ -2,6 +2,7 @@ package gui
 
 import (
 	"strings"
+	"sync/atomic"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
@@ -31,6 +32,8 @@ type App struct {
 	settings       *SettingsView
 	chatSvc        *chat.Service
 	cfg            *config.Config
+	chatVersion    atomic.Uint64
+	minRequestID   atomic.Uint64
 }
 
 // Run 启动 ChatFish 应用，初始化 GUI 并阻塞在主事件循环中。
@@ -99,7 +102,7 @@ func (a *App) createToolbar() *widget.Toolbar {
 	return widget.NewToolbar(
 		widget.NewToolbarAction(clearIcon(), func() {
 			if a.chatSvc != nil {
-				a.chatSvc.Cancel()
+				a.minRequestID.Store(a.chatSvc.Cancel() + 1)
 				a.chatSvc.ClearHistory()
 			}
 			a.chatView.Clear()
@@ -114,26 +117,54 @@ func (a *App) createToolbar() *widget.Toolbar {
 }
 
 func (a *App) initChatService() error {
-	// 取消旧服务正在进行的请求
-	if a.chatSvc != nil {
-		a.chatSvc.Cancel()
-		a.chatSvc = nil
-	}
-
+	version := a.chatVersion.Load() + 1
 	if strings.TrimSpace(a.cfg.APIKey) == "" {
+		oldService := a.chatSvc
+		a.chatSvc = nil
+		a.chatVersion.Store(version)
+		a.minRequestID.Store(0)
+		if oldService != nil {
+			oldService.Cancel()
+		}
 		return nil
 	}
+
 	svc, err := chat.NewService(a.cfg.APIKey, a.cfg.BaseURL, a.cfg.Model, chat.WithGUIOutput(chat.GUIStreamCallbacks{
-		OnStart:  func() { fyne.Do(func() { a.chatView.AddAIMessageStart() }) },
-		OnChunk:  func(text string) { fyne.Do(func() { a.chatView.AddAIMessageChunk(text) }) },
-		OnFinish: func() { fyne.Do(func() { a.chatView.AddAIMessageEnd() }) },
-		OnError:  func(err error) { fyne.Do(func() { a.chatView.ShowError("流式响应异常: " + err.Error()) }) },
+		OnStart: func(requestID uint64) {
+			a.runForCurrentRequest(version, requestID, func() { a.chatView.AddAIMessageStart() })
+		},
+		OnChunk: func(requestID uint64, text string) {
+			a.runForCurrentRequest(version, requestID, func() { a.chatView.AddAIMessageChunk(text) })
+		},
+		OnFinish: func(requestID uint64) {
+			a.runForCurrentRequest(version, requestID, func() { a.chatView.AddAIMessageEnd() })
+		},
+		OnError: func(requestID uint64, err error) {
+			a.runForCurrentRequest(version, requestID, func() {
+				a.chatView.ShowError("流式响应异常: " + err.Error())
+			})
+		},
 	}))
 	if err != nil {
 		return err
 	}
+
+	oldService := a.chatSvc
 	a.chatSvc = svc
+	a.chatVersion.Store(version)
+	a.minRequestID.Store(0)
+	if oldService != nil {
+		oldService.Cancel()
+	}
 	return nil
+}
+
+func (a *App) runForCurrentRequest(version, requestID uint64, action func()) {
+	fyne.Do(func() {
+		if a.chatVersion.Load() == version && requestID >= a.minRequestID.Load() {
+			action()
+		}
+	})
 }
 
 func (a *App) onSendMessage(text string) {
@@ -142,12 +173,15 @@ func (a *App) onSendMessage(text string) {
 		a.chatView.ShowError("请先在设置中配置 API Key")
 		return
 	}
+	version := a.chatVersion.Load()
 	a.chatView.AddUserMessage(text)
 	a.chatView.SetLoading(true)
 	go func() {
 		if err := svc.Chat(text); err != nil {
 			fyne.Do(func() {
-				a.chatView.SetLoading(false)
+				if a.chatVersion.Load() == version && a.chatSvc == svc {
+					a.chatView.SetLoading(false)
+				}
 			})
 		}
 	}()

@@ -2,8 +2,10 @@ package gui
 
 import (
 	"image/color"
+	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
@@ -17,6 +19,7 @@ const (
 	bubbleMinPadding      = 10
 	bubbleCornerRadius    = 12
 	thinkingPlaceholder   = "正在思考..."
+	streamRenderInterval  = 50 * time.Millisecond
 )
 
 var (
@@ -38,11 +41,11 @@ var (
 
 // bubbleBox 封装单条消息的气泡组件，支持普通文本和 Markdown 渲染。
 type bubbleBox struct {
-	bg              *canvas.Rectangle
-	label           *widget.Label
-	richText        *widget.RichText
-	isAI            bool
-	accumulatedText string
+	bg         *canvas.Rectangle
+	label      *widget.Label
+	richText   *widget.RichText
+	isAI       bool
+	streamText strings.Builder
 }
 
 func newBubbleBox(text string, bgColor color.Color, textColor color.Color, maxWidth float32, isAI bool) *bubbleBox {
@@ -79,15 +82,6 @@ func (b *bubbleBox) Container() fyne.CanvasObject {
 	return container.NewStack(b.bg, padded)
 }
 
-// SetText 更新气泡内容，AI 消息通过 Fyne 内置 Markdown 渲染器转换。
-func (b *bubbleBox) SetText(text string) {
-	if b.isAI && b.richText != nil {
-		b.richText.ParseMarkdown(text)
-	} else {
-		b.label.SetText(text)
-	}
-}
-
 // ChatView 是聊天界面的核心组件，包含消息列表、输入框和发送按钮。
 type ChatView struct {
 	container     *fyne.Container
@@ -98,6 +92,8 @@ type ChatView struct {
 	onSend        func(string)
 	currentBubble *bubbleBox
 	bubbleMu      sync.Mutex
+	bubbleID      uint64
+	renderPending bool
 	maxWidth      float32
 	isLoading     atomic.Bool
 	activity      *widget.Activity
@@ -166,6 +162,8 @@ func (cv *ChatView) AddAIMessageStart() {
 	cv.bubbleMu.Lock()
 	defer cv.bubbleMu.Unlock()
 
+	cv.bubbleID++
+	cv.renderPending = false
 	cv.currentBubble = newBubbleBox(thinkingPlaceholder, aiBgColor, aiTextColor, cv.maxWidth, true)
 	cv.currentBubble.richText.ParseMarkdown(thinkingPlaceholder)
 	bubbleCanvas := cv.currentBubble.Container()
@@ -186,17 +184,43 @@ func (cv *ChatView) AddAIMessageChunk(text string) {
 	defer cv.bubbleMu.Unlock()
 
 	if cv.currentBubble != nil {
-		cv.currentBubble.accumulatedText += text
-		cv.currentBubble.richText.ParseMarkdown(cv.currentBubble.accumulatedText)
-		cv.scroll.ScrollToBottom()
+		cv.currentBubble.streamText.WriteString(text)
+		if !cv.renderPending {
+			cv.renderPending = true
+			bubbleID := cv.bubbleID
+			time.AfterFunc(streamRenderInterval, func() {
+				fyne.Do(func() { cv.flushAIMessage(bubbleID) })
+			})
+		}
 	}
+}
+
+func (cv *ChatView) flushAIMessage(bubbleID uint64) {
+	cv.bubbleMu.Lock()
+	defer cv.bubbleMu.Unlock()
+
+	if cv.currentBubble == nil || cv.bubbleID != bubbleID {
+		return
+	}
+	cv.renderPending = false
+	cv.renderCurrentBubble()
+}
+
+func (cv *ChatView) renderCurrentBubble() {
+	if cv.currentBubble == nil || cv.currentBubble.streamText.Len() == 0 {
+		return
+	}
+	cv.currentBubble.richText.ParseMarkdown(cv.currentBubble.streamText.String())
+	cv.scroll.ScrollToBottom()
 }
 
 // AddAIMessageEnd 标记当前 AI 消息接收完成，恢复输入状态。
 func (cv *ChatView) AddAIMessageEnd() {
 	cv.bubbleMu.Lock()
 	defer cv.bubbleMu.Unlock()
+	cv.renderCurrentBubble()
 	cv.currentBubble = nil
+	cv.renderPending = false
 	cv.isLoading.Store(false)
 	cv.activity.Hide()
 	cv.sendBtn.Enable()
@@ -231,6 +255,8 @@ func (cv *ChatView) Clear() {
 	cv.messageList.Objects = nil
 	cv.messageList.Refresh()
 	cv.currentBubble = nil
+	cv.bubbleID++
+	cv.renderPending = false
 	cv.isLoading.Store(false)
 	cv.activity.Stop()
 	cv.activity.Hide()
